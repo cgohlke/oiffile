@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # oiffile/setup.py
 
+"""Oiffile package setuptools script."""
+
 import sys
 import re
 
@@ -10,7 +12,7 @@ with open('oiffile/oiffile.py') as fh:
     code = fh.read()
 
 version = re.search(r"__version__ = '(.*?)'", code).groups()[0]
-description = re.search(r'"""(.*)\.\n', code).groups()[0]
+description = re.search(r'"""(.*)\.[\r\n?|\n]', code).groups()[0]
 readme = re.search(r'[\r\n?|\n]{2}"""(.*)"""[\r\n?|\n]{2}from', code,
                    re.MULTILINE | re.DOTALL).groups()[0]
 license = re.search(r'(# Copyright.*?[\r\n?|\n])[\r\n?|\n]+""', code,
@@ -37,7 +39,7 @@ setup(
     license='BSD',
     packages=['oiffile'],
     python_requires='>=2.7',
-    install_requires=['numpy>=1.13', 'tiffile>=2018.8.28'],
+    install_requires=['numpy>=1.11.3', 'tifffile>=2018.10.18'],
     platforms=['any'],
     classifiers=[
         'Development Status :: 4 - Beta',
