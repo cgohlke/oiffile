@@ -9,19 +9,21 @@
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
 #
-# * Redistributions of source code must retain the above copyright
-#   notice, this list of conditions and the following disclaimer.
-# * Redistributions in binary form must reproduce the above copyright
-#   notice, this list of conditions and the following disclaimer in the
-#   documentation and/or other materials provided with the distribution.
-# * Neither the name of the copyright holders nor the names of any
-#   contributors may be used to endorse or promote products derived
-#   from this software without specific prior written permission.
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its
+#   contributors may be used to endorse or promote products derived from
+#   this software without specific prior written permission.
 #
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-# ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
 # LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
 # CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
 # SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
@@ -32,12 +34,17 @@
 
 """Read Olympus(r) image files (OIF and OIB).
 
-The Olympus Image Format is the native file format of the Olympus FluoView(tm)
+Oiffile is a Python library to read image and metadata from Olympus Image
+Format files. OIF is the native file format of the Olympus FluoView(tm)
 software for confocal microscopy.
-OIF (Olympus Image File) is a multi-file format that includes a main setting
+
+There are two variants of the format:
+
+* OIF (Olympus Image File) is a multi-file format that includes a main setting
 file (.oif) and an associated directory with data and setting files (.tif,
 .bmp, .txt, .pyt, .roi, and .lut).
-OIB (Olympus Image Binary) is a compound document file, storing OIF and
+
+* OIB (Olympus Image Binary) is a compound document file, storing OIF and
 associated files within a single file.
 
 :Author:
@@ -46,13 +53,13 @@ associated files within a single file.
 :Organization:
   Laboratory for Fluorescence Dynamics. University of California, Irvine
 
-:Version: 2018.8.29
+:Version: 2018.10.18
 
 Requirements
 ------------
 * `CPython 2.7 or 3.5+ <https://www.python.org>`_
 * `Numpy 1.14 <https://www.numpy.org>`_
-* `Tiffile 2018.8.28 <https://www.lfd.uci.edu/~gohlke/>`_
+* `Tifffile 2018.10.18 <https://www.lfd.uci.edu/~gohlke/>`_
 
 Notes
 -----
@@ -117,9 +124,10 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 from __future__ import division, print_function
 
-__version__ = '2018.8.29'
+__version__ = '2018.10.18'
 __docformat__ = 'restructuredtext en'
-__all__ = 'imread', 'oib2oif', 'OifFile', 'SettingsFile', 'CompoundFile'
+__all__ = ('imread', 'oib2oif', 'OifFile', 'OibFileSystem', 'OifFileSystem',
+           'SettingsFile', 'CompoundFile', 'filetime')
 
 import sys
 import os
@@ -131,7 +139,7 @@ from datetime import datetime
 
 import numpy
 
-from tiffile import TiffFile, TiffSequence, lazyattr, natural_sorted
+from tifffile import TiffFile, TiffSequence, lazyattr, natural_sorted
 
 
 def imread(filename, *args, **kwargs):
