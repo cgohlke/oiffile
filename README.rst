@@ -1,12 +1,17 @@
 Read Olympus(r) image files (OIF and OIB)
 =========================================
 
-The Olympus Image Format is the native file format of the Olympus FluoView(tm)
+Oiffile is a Python library to read image and metadata from Olympus Image
+Format files. OIF is the native file format of the Olympus FluoView(tm)
 software for confocal microscopy.
-OIF (Olympus Image File) is a multi-file format that includes a main setting
+
+There are two variants of the format:
+
+* OIF (Olympus Image File) is a multi-file format that includes a main setting
 file (.oif) and an associated directory with data and setting files (.tif,
 .bmp, .txt, .pyt, .roi, and .lut).
-OIB (Olympus Image Binary) is a compound document file, storing OIF and
+
+* OIB (Olympus Image Binary) is a compound document file, storing OIF and
 associated files within a single file.
 
 :Author:
@@ -15,13 +20,13 @@ associated files within a single file.
 :Organization:
   Laboratory for Fluorescence Dynamics. University of California, Irvine
 
-:Version: 2018.8.29
+:Version: 2018.10.18
 
 Requirements
 ------------
 * `CPython 2.7 or 3.5+ <https://www.python.org>`_
 * `Numpy 1.14 <https://www.numpy.org>`_
-* `Tiffile 2018.8.28 <https://www.lfd.uci.edu/~gohlke/>`_
+* `Tifffile 2018.10.18 <https://www.lfd.uci.edu/~gohlke/>`_
 
 Notes
 -----
