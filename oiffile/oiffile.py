@@ -41,11 +41,11 @@ software for confocal microscopy.
 There are two variants of the format:
 
 * OIF (Olympus Image File) is a multi-file format that includes a main setting
-file (.oif) and an associated directory with data and setting files (.tif,
-.bmp, .txt, .pyt, .roi, and .lut).
+  file (.oif) and an associated directory with data and setting files (.tif,
+  .bmp, .txt, .pyt, .roi, and .lut).
 
 * OIB (Olympus Image Binary) is a compound document file, storing OIF and
-associated files within a single file.
+  associated files within a single file.
 
 :Author:
   `Christoph Gohlke <https://www.lfd.uci.edu/~gohlke/>`_
@@ -53,13 +53,13 @@ associated files within a single file.
 :Organization:
   Laboratory for Fluorescence Dynamics. University of California, Irvine
 
-:Version: 2018.10.18
+:Version: 2018.11.28
 
 Requirements
 ------------
 * `CPython 2.7 or 3.5+ <https://www.python.org>`_
 * `Numpy 1.14 <https://www.numpy.org>`_
-* `Tifffile 2018.10.18 <https://www.lfd.uci.edu/~gohlke/>`_
+* `Tifffile 2018.11.28 <https://pypi.org/project/tifffile/>`_
 
 Notes
 -----
@@ -124,7 +124,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 from __future__ import division, print_function
 
-__version__ = '2018.10.18'
+__version__ = '2018.11.28'
 __docformat__ = 'restructuredtext en'
 __all__ = ('imread', 'oib2oif', 'OifFile', 'OibFileSystem', 'OifFileSystem',
            'SettingsFile', 'CompoundFile', 'filetime')
@@ -209,28 +209,29 @@ class OifFile(object):
     def tiffs(self):
         """Return TiffSequence of all sorted TIFF files."""
         files = natural_sorted(self.glob('*.tif'))
-        return TiffSequence(files, imread=self.asarray)
+        return TiffSequence(files, imread=self.asarray, pattern='axes')
 
-    def asarray(self, filename=None, *args, **kwargs):
+    def asarray(self, filename=None, **kwargs):
         """Return image data from TIFF file(s) as numpy array.
 
         If no filename is specified (default), the data from all TIFF
         files is returned. This might fail if TIFF files contain data of
         different shapes or types.
 
-        The args and kwargs parameters are passed to the asarray functions of
-        the TiffFile or TiffSequence instances.
+        The kwargs parameters are passed to the asarray functions of the
+        TiffFile or TiffSequence instances.
         E.g. if memmap is True, the returned array is stored in a binary
         file on disk, if possible.
 
         """
         if filename is None:
-            return self.tiffs.asarray(*args, **kwargs)
+            return self.tiffs.asarray(**kwargs)
         with TiffFile(self.open_file(filename), name=filename) as tif:
-            result = tif.asarray(*args, **kwargs)
+            result = tif.asarray(**kwargs)
         return result
 
     def close(self):
+        """Close file handle."""
         self._fs.close()
 
     def __enter__(self):
@@ -287,6 +288,7 @@ class OifFileSystem(object):
         return (f for f in self.files() if pattern.match(f))
 
     def close(self):
+        """Close file handle."""
         pass
 
     def __enter__(self):
@@ -376,6 +378,7 @@ class OibFileSystem(object):
             print(' done.')
 
     def close(self):
+        """Close file handle."""
         self._oib.close()
 
     def __enter__(self):
@@ -611,6 +614,7 @@ class CompoundFile(object):
         return '\n'.join(natural_sorted(self.files()))
 
     def close(self):
+        """Close file handle."""
         self._fh.close()
 
     def __enter__(self):
