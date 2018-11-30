@@ -39,7 +39,7 @@ setup(
     license='BSD',
     packages=['oiffile'],
     python_requires='>=2.7',
-    install_requires=['numpy>=1.11.3', 'tifffile>=2018.10.18'],
+    install_requires=['numpy>=1.11.3', 'tifffile>=2018.11.28'],
     platforms=['any'],
     classifiers=[
         'Development Status :: 4 - Beta',
