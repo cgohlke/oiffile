@@ -8,11 +8,11 @@ software for confocal microscopy.
 There are two variants of the format:
 
 * OIF (Olympus Image File) is a multi-file format that includes a main setting
-file (.oif) and an associated directory with data and setting files (.tif,
-.bmp, .txt, .pyt, .roi, and .lut).
+  file (.oif) and an associated directory with data and setting files (.tif,
+  .bmp, .txt, .pyt, .roi, and .lut).
 
 * OIB (Olympus Image Binary) is a compound document file, storing OIF and
-associated files within a single file.
+  associated files within a single file.
 
 :Author:
   `Christoph Gohlke <https://www.lfd.uci.edu/~gohlke/>`_
@@ -20,13 +20,13 @@ associated files within a single file.
 :Organization:
   Laboratory for Fluorescence Dynamics. University of California, Irvine
 
-:Version: 2018.10.18
+:Version: 2018.11.28
 
 Requirements
 ------------
 * `CPython 2.7 or 3.5+ <https://www.python.org>`_
 * `Numpy 1.14 <https://www.numpy.org>`_
-* `Tifffile 2018.10.18 <https://www.lfd.uci.edu/~gohlke/>`_
+* `Tifffile 2018.11.28 <https://pypi.org/project/tifffile/>`_
 
 Notes
 -----
