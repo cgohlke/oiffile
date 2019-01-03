@@ -39,7 +39,7 @@ setup(
     license='BSD',
     packages=['oiffile'],
     python_requires='>=2.7',
-    install_requires=['numpy>=1.11.3', 'tifffile>=2018.11.28'],
+    install_requires=['numpy>=1.11.3', 'tifffile>=2019.1.1'],
     platforms=['any'],
     classifiers=[
         'Development Status :: 4 - Beta',
@@ -50,7 +50,6 @@ setup(
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
