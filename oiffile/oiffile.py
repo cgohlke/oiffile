@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 # oiffile.py
 
-# Copyright (c) 2012-2018, Christoph Gohlke
-# Copyright (c) 2012-2018, The Regents of the University of California
+# Copyright (c) 2012-2019, Christoph Gohlke
+# Copyright (c) 2012-2019, The Regents of the University of California
 # Produced at the Laboratory for Fluorescence Dynamics.
 # All rights reserved.
 #
@@ -53,13 +53,18 @@ There are two variants of the format:
 :Organization:
   Laboratory for Fluorescence Dynamics. University of California, Irvine
 
-:Version: 2018.11.28
+:Version: 2019.1.1
 
 Requirements
 ------------
 * `CPython 2.7 or 3.5+ <https://www.python.org>`_
 * `Numpy 1.14 <https://www.numpy.org>`_
-* `Tifffile 2018.11.28 <https://pypi.org/project/tifffile/>`_
+* `Tifffile 2019.1.1 <https://pypi.org/project/tifffile/>`_
+
+Revisions
+---------
+2019.1.1
+    Update copyright year.
 
 Notes
 -----
@@ -124,7 +129,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 from __future__ import division, print_function
 
-__version__ = '2018.11.28'
+__version__ = '2019.1.1'
 __docformat__ = 'restructuredtext en'
 __all__ = ('imread', 'oib2oif', 'OifFile', 'OibFileSystem', 'OifFileSystem',
            'SettingsFile', 'CompoundFile', 'filetime')
