@@ -20,13 +20,18 @@ There are two variants of the format:
 :Organization:
   Laboratory for Fluorescence Dynamics. University of California, Irvine
 
-:Version: 2018.11.28
+:Version: 2019.1.1
 
 Requirements
 ------------
 * `CPython 2.7 or 3.5+ <https://www.python.org>`_
 * `Numpy 1.14 <https://www.numpy.org>`_
-* `Tifffile 2018.11.28 <https://pypi.org/project/tifffile/>`_
+* `Tifffile 2019.1.1 <https://pypi.org/project/tifffile/>`_
+
+Revisions
+---------
+2019.1.1
+    Update copyright year.
 
 Notes
 -----
