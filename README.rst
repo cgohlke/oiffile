@@ -20,24 +20,29 @@ There are two variants of the format:
 :Organization:
   Laboratory for Fluorescence Dynamics. University of California, Irvine
 
-:Version: 2019.1.1
+:License: BSD 3-Clause
+
+:Version: 2020.1.18
 
 Requirements
 ------------
-* `CPython 2.7 or 3.5+ <https://www.python.org>`_
+* `CPython >= 3.6 <https://www.python.org>`_
 * `Numpy 1.14 <https://www.numpy.org>`_
 * `Tifffile 2019.1.1 <https://pypi.org/project/tifffile/>`_
 
 Revisions
 ---------
-2019.1.1
-    Update copyright year.
+2020.1.18
+    Fix indentation error.
+2020.1.1
+    Support multiple image series.
+    Parse shape and dtype from settings file.
+    Remove support for Python 2.7 and 3.5.
+    Update copyright.
 
 Notes
 -----
 The API is not stable yet and might change between revisions.
-
-Python 2.7 and 3.4 are deprecated.
 
 No specification document is available.
 
@@ -64,10 +69,16 @@ Read the image from a single TIFF file in an OIB file:
 >>> image[95, 216]
 820
 
-Access information in an OIB main file:
+Access metadata and the OIB main file:
 
 >>> with OifFile('test.oib') as oib:
+...     oib.axes
+...     oib.shape
+...     oib.dtype
 ...     dataname = oib.mainfile['File Info']['DataName']
+'CYX'
+(3, 256, 256)
+dtype('uint16')
 >>> dataname
 'Cell 1 mitoEGFP.oib'
 
@@ -79,15 +90,16 @@ Saving ... done.
 
 Read the image from the extracted OIF file:
 
->>> oif_filename = '%s/%s.oif' % (tempdir, dataname[:-4])
->>> image = imread(oif_filename)
+>>> image = imread(f'{tempdir}/{dataname[:-4]}.oif')
 >>> image[:, 95, 216]
 array([820,  50, 436], dtype=uint16)
 
 Read OLE compound file and access the 'OibInfo.txt' settings file:
 
->>> with CompoundFile('test.oib') as oib:
-...     info = oib.open_file('OibInfo.txt')
+>>> with CompoundFile('test.oib') as com:
+...     info = com.open_file('OibInfo.txt')
+...     len(com.files())
+14
 >>> info = SettingsFile(info, 'OibInfo.txt')
 >>> info['OibSaveInfo']['Version']
 '2.0.0.0'
