@@ -52,16 +52,20 @@ There are two variants of the format:
 
 :License: BSD 3-Clause
 
-:Version: 2020.1.18
+:Version: 2020.9.18
 
 Requirements
 ------------
-* `CPython >= 3.6 <https://www.python.org>`_
-* `Numpy 1.14 <https://www.numpy.org>`_
-* `Tifffile 2019.1.1 <https://pypi.org/project/tifffile/>`_
+* `CPython >= 3.7 <https://www.python.org>`_
+* `Numpy 1.15 <https://www.numpy.org>`_
+* `Tifffile 2020.6.3 <https://pypi.org/project/tifffile/>`_
 
 Revisions
 ---------
+2020.9.18
+    Remove support for Python 3.6 (NEP 29).
+    Support os.PathLike file names.
+    Fix unclosed files.
 2020.1.18
     Fix indentation error.
 2020.1.1
@@ -136,7 +140,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 """
 
-__version__ = '2020.1.18'
+__version__ = '2020.9.18'
 
 __all__ = (
     'imread',
@@ -201,7 +205,7 @@ class OifFile:
 
     def __init__(self, filename):
         """Open OIF or OIB file and read main settings."""
-        self.filename = filename
+        self.filename = filename = os.fspath(filename)
         if filename.lower().endswith('.oif'):
             self.filesystem = OifFileSystem(filename)
             self.is_oib = False
@@ -210,14 +214,16 @@ class OifFile:
             self.is_oib = True
         self.mainfile = self.filesystem.settings
         # map file names to storage names (flattened name space)
-        self._files_flat = {os.path.basename(f): f
-                            for f in self.filesystem.files()}
+        self._files_flat = {
+            os.path.basename(f): f for f in self.filesystem.files()
+        }
 
     def open_file(self, filename):
         """Return open file object from path name."""
         try:
             return self.filesystem.open_file(
-                self._files_flat.get(filename, filename))
+                self._files_flat.get(filename, filename)
+            )
         except (KeyError, OSError) as exc:
             raise FileNotFoundError(f'No such file: {filename}') from exc
 
@@ -238,8 +244,9 @@ class OifFile:
     def shape(self):
         """Return shape of image data from mainfile."""
         size = {
-            self.mainfile[f'Axis {i} Parameters Common']['AxisCode']:
-            int(self.mainfile[f'Axis {i} Parameters Common']['MaxSize'])
+            self.mainfile[f'Axis {i} Parameters Common']['AxisCode']: int(
+                self.mainfile[f'Axis {i} Parameters Common']['MaxSize']
+            )
             for i in range(8)
         }
         return tuple(size[ax] for ax in self.axes)
@@ -248,7 +255,8 @@ class OifFile:
     def dtype(self):
         """Return dtype of image data from mainfile."""
         bitcount = int(
-            self.mainfile['Reference Image Parameter']['ValidBitCounts'])
+            self.mainfile['Reference Image Parameter']['ValidBitCounts']
+        )
         return numpy.dtype('<u2' if bitcount > 8 else '<u2')
 
     @lazyattr
@@ -256,18 +264,23 @@ class OifFile:
         """Return tuple of TiffSequence of sorted TIFF files."""
         series = {}
         for fname in self.glob('*.tif'):
-            key = ''.join(c for c in os.path.split(fname)[-1][:-4]
-                          if c.isalpha())
+            key = ''.join(
+                c for c in os.path.split(fname)[-1][:-4] if c.isalpha()
+            )
             if key in series:
                 series[key].append(fname)
             else:
                 series[key] = [fname]
-        series = [TiffSequence(natural_sorted(files),
-                               imread=self.asarray, pattern='axes')
-                  for files in series.values()]
+        series = [
+            TiffSequence(
+                natural_sorted(files), imread=self.asarray, pattern='axes'
+            )
+            for files in series.values()
+        ]
         if len(series) > 1:
-            series = tuple(reversed(sorted(series,
-                                           key=lambda x: len(x.files))))
+            series = tuple(
+                reversed(sorted(series, key=lambda x: len(x.files)))
+            )
         return series
 
     @property
@@ -288,8 +301,12 @@ class OifFile:
         """
         if isinstance(series, int):
             return self.series[series].asarray(**kwargs)
-        with TiffFile(self.open_file(series), name=series) as tif:
-            result = tif.asarray(**kwargs)
+        try:
+            fh = self.open_file(series)
+            with TiffFile(fh, name=series) as tif:
+                result = tif.asarray(**kwargs)
+        finally:
+            fh.close()
         return result
 
     def close(self):
@@ -325,7 +342,7 @@ class OifFileSystem:
 
     def __init__(self, filename, storage_ext='.files'):
         """Open OIF file and read settings."""
-        self.filename = filename
+        self.filename = filename = os.fspath(filename)
         self._path, self.mainfile = os.path.split(os.path.abspath(filename))
         self.settings = SettingsFile(filename, name=self.mainfile)
         self.name = self.settings['ProfileSaveInfo']['Name']
@@ -334,7 +351,8 @@ class OifFileSystem:
         storage = os.path.join(self._path, self.mainfile + storage_ext)
         if not os.path.exists(storage) or not os.path.isdir(storage):
             raise OSError(
-                f'OIF storage path not found: {self.mainfile}{storage_ext}')
+                f'OIF storage path not found: {self.mainfile}{storage_ext}'
+            )
         # list all files
         pathlen = len(self._path + os.path.sep)
         self._files = [self.mainfile]
@@ -342,7 +360,11 @@ class OifFileSystem:
             self._files.append(f[pathlen:])
 
     def open_file(self, filename):
-        """Return file object from path name."""
+        """Return file object from path name.
+
+        File object must be closed.
+
+        """
         return open(os.path.join(self._path, filename), 'rb')
 
     def files(self):
@@ -366,13 +388,15 @@ class OifFileSystem:
 
     def __str__(self):
         """Return string with information about OifFileSystem."""
-        return '\n '.join((
-            self.__class__.__name__,
-            os.path.normpath(os.path.normcase(self.filename)),
-            f'name: {self.name}',
-            f'version: {self.version}',
-            f'mainfile: {self.mainfile}',
-        ))
+        return '\n '.join(
+            (
+                self.__class__.__name__,
+                os.path.normpath(os.path.normcase(self.filename)),
+                f'name: {self.name}',
+                f'version: {self.version}',
+                f'mainfile: {self.mainfile}',
+            )
+        )
 
 
 class OibFileSystem:
@@ -380,24 +404,28 @@ class OibFileSystem:
 
     def __init__(self, filename):
         """Open compound document and read OibInfo.txt settings."""
-        self.filename = filename
+        self.filename = filename = os.fspath(filename)
         self.com = CompoundFile(filename)
-        info = SettingsFile(self.com.open_file('OibInfo.txt'),
-                            'OibInfo.txt')['OibSaveInfo']
+        info = SettingsFile(self.com.open_file('OibInfo.txt'), 'OibInfo.txt')[
+            'OibSaveInfo'
+        ]
         self.name = info.get('Name', None)
         self.version = info.get('Version', None)
         self.compression = info.get('Compression', None)
         self.mainfile = info[info['MainFileName']]
         # map OIB file names to CompoundFile file names
         oibfiles = {os.path.split(i)[-1]: i for i in self.com.files()}
-        self._files = {v: oibfiles[k] for k, v in info.items()
-                       if k.startswith('Stream')}
+        self._files = {
+            v: oibfiles[k] for k, v in info.items() if k.startswith('Stream')
+        }
         # map storage names to directory names
-        self._folders = {i[0]: i[1] for i in info.items()
-                         if i[0].startswith('Storage')}
+        self._folders = {
+            i[0]: i[1] for i in info.items() if i[0].startswith('Storage')
+        }
         # read main settings file
-        self.settings = SettingsFile(self.open_file(self.mainfile),
-                                     name=self.mainfile)
+        self.settings = SettingsFile(
+            self.open_file(self.mainfile), name=self.mainfile
+        )
 
     def open_file(self, filename):
         """Return file object from case sensitive path name."""
@@ -456,14 +484,16 @@ class OibFileSystem:
 
     def __str__(self):
         """Return string with information about OibFileSystem."""
-        return '\n '.join((
-            self.__class__.__name__,
-            os.path.normpath(os.path.normcase(self.filename)),
-            f'name: {self.name}',
-            f'version: {self.version}',
-            f'mainfile: {self.mainfile}',
-            f'compression: {self.compression}',
-        ))
+        return '\n '.join(
+            (
+                self.__class__.__name__,
+                os.path.normpath(os.path.normcase(self.filename)),
+                f'name: {self.name}',
+                f'version: {self.version}',
+                f'mainfile: {self.mainfile}',
+                f'compression: {self.compression}',
+            )
+        )
 
 
 class SettingsFile(dict):
@@ -490,8 +520,8 @@ class SettingsFile(dict):
 
         """
         dict.__init__(self)
-        if isinstance(arg, str):
-            self.name = arg
+        if isinstance(arg, (str, os.PathLike)):
+            self.name = os.fspath(arg)
             stream = open(arg, 'rb')
         else:
             self.name = str(name)
@@ -506,19 +536,23 @@ class SettingsFile(dict):
             # UTF16 BOM
             content = content.rsplit(
                 b'[\x00C\x00o\x00l\x00o\x00r\x00L\x00U\x00T\x00'
-                b'D\x00a\x00t\x00a\x00]\x00\x0D\x00\x0A\x00', 1)
+                b'D\x00a\x00t\x00a\x00]\x00\x0D\x00\x0A\x00',
+                1,
+            )
             if len(content) > 1:
                 self['ColorLUTData'] = numpy.fromstring(
-                    content[1], 'uint8').reshape(-1, 4)
+                    content[1], 'uint8'
+                ).reshape(-1, 4)
             content = content[0].decode('utf-16')
         elif content[:1] == b'[':
             # try UTF-8
             content = content.rsplit(b'[ColorLUTData]\r\n', 1)
             if len(content) > 1:
                 self['ColorLUTData'] = numpy.fromstring(
-                    content[1], 'uint8').reshape(-1, 4)
+                    content[1], 'uint8'
+                ).reshape(-1, 4)
             try:
-                content = content[0].decode('utf-8')
+                content = content[0].decode()
             except Exception as exc:
                 raise ValueError('not a valid settings file') from exc
         else:
@@ -559,6 +593,7 @@ class CompoundFile:
 
     def __init__(self, filename):
         """Initialize instance from file."""
+        self.filename = filename = os.fspath(filename)
         self._fh = open(filename, 'rb')
         if self._fh.read(8) != b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
             self.close()
@@ -594,23 +629,27 @@ class CompoundFile:
 
         if self.version_minor != 0x3E:
             raise OifFileError(
-                f'cannot handle version_minor {self.version_minor}')
+                f'cannot handle version_minor {self.version_minor}'
+            )
         if mini_sector_shift != 0x0006:
             raise OifFileError(
-                f'cannot handle mini_sector_shift {mini_sector_shift}')
+                f'cannot handle mini_sector_shift {mini_sector_shift}'
+            )
         if not (
-            (self.version_major == 0x4 and sector_shift == 0x000C) or
-            (self.version_major == 0x3 and sector_shift == 0x0009 and
-             self.dir_len == 0)
+            (self.version_major == 0x4 and sector_shift == 0x000C)
+            or (
+                self.version_major == 0x3
+                and sector_shift == 0x0009
+                and self.dir_len == 0
+            )
         ):
             raise OifFileError(
                 f'cannot handle version_major {self.version_major} '
                 f'and sector_shift {sector_shift}'
             )
 
-        self.filename = filename
-        self.sec_size = 2**sector_shift
-        self.short_sec_size = 2**mini_sector_shift
+        self.sec_size = 2 ** sector_shift
+        self.short_sec_size = 2 ** mini_sector_shift
 
         secfmt = '<' + ('I' * (self.sec_size // 4))
         # read DIFAT
@@ -625,7 +664,7 @@ class CompoundFile:
             self._difat.extend(sec[:-1])
             nextsec = sec[-1]
         # if nextsec != CompoundFile.ENDOFCHAIN: raise OifFileError()
-        self._difat = self._difat[:self.fat_len]
+        self._difat = self._difat[: self.fat_len]
         # read FAT
         self._fat = []
         for secid in self._difat:
@@ -640,15 +679,16 @@ class CompoundFile:
         self._dirs = []
         for sector in self._sec_chain(self.dir_start):
             for i in range(0, self.sec_size, 128):
-                direntry = DirectoryEntry(sector[i:i+128], self.version_major)
+                direntry = DirectoryEntry(
+                    sector[i : i + 128], self.version_major
+                )
                 self._dirs.append(direntry)
         # read root storage
         if len(self._dirs) <= 0:
             raise OifFileError('no directories found')
         root = self._dirs[0]
         if root.name != 'Root Entry':
-            raise OifFileError(
-                f"no root directory found, got {root.name}")
+            raise OifFileError(f"no root directory found, got {root.name}")
         if root.create_time is not None:  # and root.modify_time is None
             raise OifFileError(f'invalid root.create_time {root.create_time}')
         if root.stream_size % self.short_sec_size != 0:
@@ -658,7 +698,7 @@ class CompoundFile:
             )
         # read mini stream
         self._ministream = b''.join(self._sec_chain(root.sector_start))
-        self._ministream = self._ministream[:root.stream_size]
+        self._ministream = self._ministream[: root.stream_size]
         # map stream/file names to directory entries
         nostream = CompoundFile.NOSTREAM
         join = '/'.join  # os.path.sep.join
@@ -687,7 +727,7 @@ class CompoundFile:
             result = b''.join(self._mini_sec_chain(direntry.sector_start))
         else:
             result = b''.join(self._sec_chain(direntry.sector_start))
-        return result[:direntry.stream_size]
+        return result[: direntry.stream_size]
 
     def _sec_read(self, secid):
         """Return content of sector from file."""
@@ -704,7 +744,7 @@ class CompoundFile:
     def _mini_sec_read(self, secid):
         """Return content of sector from mini stream."""
         pos = secid * self.short_sec_size
-        return self._ministream[pos: pos+self.short_sec_size]
+        return self._ministream[pos : pos + self.short_sec_size]
 
     def _mini_sec_chain(self, secid):
         """Return iterator over mini FAT sector chain content."""
@@ -746,9 +786,18 @@ class CompoundFile:
             os.path.normpath(os.path.normcase(self.filename)),
         ]
         for attr in (
-            'clsid', 'version_minor', 'version_major', 'byteorder',
-            'dir_len', 'fat_len', 'dir_start', 'mini_stream_cutof_size',
-            'minifat_start', 'minifat_len', 'difat_start', 'difat_len'
+            'clsid',
+            'version_minor',
+            'version_major',
+            'byteorder',
+            'dir_len',
+            'fat_len',
+            'dir_start',
+            'mini_stream_cutof_size',
+            'minifat_start',
+            'minifat_len',
+            'difat_start',
+            'difat_len',
         ):
             s.append(f'{attr}: {getattr(self, attr)}')
         return '\n '.join(s)
@@ -758,9 +807,20 @@ class DirectoryEntry:
     """Compound Document Directory Entry."""
 
     __slots__ = (
-        'name', 'entry_type', 'color', 'left_sibling_id', 'right_sibling_id',
-        'child_id', 'clsid', 'user_flags', 'create_time', 'modify_time',
-        'sector_start', 'stream_size', 'is_stream', 'is_storage'
+        'name',
+        'entry_type',
+        'color',
+        'left_sibling_id',
+        'right_sibling_id',
+        'child_id',
+        'clsid',
+        'user_flags',
+        'create_time',
+        'modify_time',
+        'sector_start',
+        'stream_size',
+        'is_stream',
+        'is_storage',
     )
 
     def __init__(self, data, version_major):
@@ -791,7 +851,7 @@ class DirectoryEntry:
         if self.color not in (0, 1):
             raise OifFileError(f'invalid color {self.color}')
 
-        self.name = name[:name_len-2].decode('utf-16')
+        self.name = name[: name_len - 2].decode('utf-16')
         self.create_time = filetime(create_time)
         self.modify_time = filetime(modify_time)
         self.is_stream = self.entry_type == 2
@@ -805,16 +865,24 @@ class DirectoryEntry:
         return '\n '.join(s)
 
 
-def format_dict(adict, prefix=' ', indent=' ', bullets=('', ''),
-                excludes=('_', ), linelen=79, trim=1):
+def format_dict(
+    adict,
+    prefix=' ',
+    indent=' ',
+    bullets=('', ''),
+    excludes=('_',),
+    linelen=79,
+    trim=1,
+):
     """Return pretty-print of nested dictionary."""
     result = []
     for k, v in sorted(adict.items(), key=lambda x: str(x[0]).lower()):
         if any(k.startswith(e) for e in excludes):
             continue
         if isinstance(v, dict):
-            v = '\n' + format_dict(v, prefix=prefix+indent, excludes=excludes,
-                                   trim=0)
+            v = '\n' + format_dict(
+                v, prefix=prefix + indent, excludes=excludes, trim=0
+            )
             result.append(f'{prefix}{bullets[1]}{k}: {v}')
         else:
             result.append((f'{prefix}{bullets[0]}{k}: {v}')[:linelen].rstrip())
