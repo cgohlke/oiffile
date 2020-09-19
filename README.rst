@@ -22,16 +22,20 @@ There are two variants of the format:
 
 :License: BSD 3-Clause
 
-:Version: 2020.1.18
+:Version: 2020.9.18
 
 Requirements
 ------------
-* `CPython >= 3.6 <https://www.python.org>`_
-* `Numpy 1.14 <https://www.numpy.org>`_
-* `Tifffile 2019.1.1 <https://pypi.org/project/tifffile/>`_
+* `CPython >= 3.7 <https://www.python.org>`_
+* `Numpy 1.15 <https://www.numpy.org>`_
+* `Tifffile 2020.6.3 <https://pypi.org/project/tifffile/>`_
 
 Revisions
 ---------
+2020.9.18
+    Remove support for Python 3.6 (NEP 29).
+    Support os.PathLike file names.
+    Fix unclosed files.
 2020.1.18
     Fix indentation error.
 2020.1.1
