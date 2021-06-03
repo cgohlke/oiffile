@@ -54,7 +54,7 @@ setup(
     },
     license='BSD',
     packages=['oiffile'],
-    python_requires='>=3.6',
+    python_requires='>=3.7',
     install_requires=['numpy>=1.15.1', 'tifffile>=2020.6.3'],
     platforms=['any'],
     classifiers=[
@@ -67,5 +67,6 @@ setup(
         'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
     ],
 )
