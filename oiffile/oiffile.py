@@ -1,6 +1,6 @@
 # oiffile.py
 
-# Copyright (c) 2012-2020, Christoph Gohlke
+# Copyright (c) 2012-2021, Christoph Gohlke
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -52,7 +52,7 @@ There are two variants of the format:
 
 :License: BSD 3-Clause
 
-:Version: 2020.9.18
+:Version: 2021.6.6
 
 Requirements
 ------------
@@ -62,6 +62,8 @@ Requirements
 
 Revisions
 ---------
+2021.6.6
+    Fix unclosed file warnings.
 2020.9.18
     Remove support for Python 3.6 (NEP 29).
     Support os.PathLike file names.
@@ -84,7 +86,6 @@ Tested only with files produced on Olympus FV1000 hardware.
 
 Examples
 --------
-
 Read the image from an OIB file as numpy array:
 
 >>> image = imread('test.oib')
@@ -140,7 +141,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 """
 
-__version__ = '2020.9.18'
+__version__ = '2021.6.6'
 
 __all__ = (
     'imread',
@@ -595,8 +596,15 @@ class CompoundFile:
         """Initialize instance from file."""
         self.filename = filename = os.fspath(filename)
         self._fh = open(filename, 'rb')
+        try:
+            self._fromfile()
+        except Exception:
+            self._fh.close()
+            raise
+
+    def _fromfile(self):
+        """Initialize instance from file."""
         if self._fh.read(8) != b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
-            self.close()
             raise ValueError('not a compound document file')
         (
             self.clsid,
@@ -688,7 +696,7 @@ class CompoundFile:
             raise OifFileError('no directories found')
         root = self._dirs[0]
         if root.name != 'Root Entry':
-            raise OifFileError(f"no root directory found, got {root.name}")
+            raise OifFileError(f'no root directory found, got {root.name}')
         if root.create_time is not None:  # and root.modify_time is None
             raise OifFileError(f'invalid root.create_time {root.create_time}')
         if root.stream_size % self.short_sec_size != 0:
