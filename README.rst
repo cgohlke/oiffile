@@ -22,7 +22,7 @@ There are two variants of the format:
 
 :License: BSD 3-Clause
 
-:Version: 2020.9.18
+:Version: 2021.6.6
 
 Requirements
 ------------
@@ -32,6 +32,8 @@ Requirements
 
 Revisions
 ---------
+2021.6.6
+    Fix unclosed file warnings.
 2020.9.18
     Remove support for Python 3.6 (NEP 29).
     Support os.PathLike file names.
@@ -54,7 +56,6 @@ Tested only with files produced on Olympus FV1000 hardware.
 
 Examples
 --------
-
 Read the image from an OIB file as numpy array:
 
 >>> image = imread('test.oib')
