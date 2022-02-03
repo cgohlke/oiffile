@@ -9,7 +9,7 @@ There are two variants of the format:
 
 * OIF (Olympus Image File) is a multi-file format that includes a main setting
   file (.oif) and an associated directory with data and setting files (.tif,
-  .bmp, .txt, .pyt, .roi, and .lut).
+  .bmp, .txt, .pty, .roi, and .lut).
 
 * OIB (Olympus Image Binary) is a compound document file, storing OIF and
   associated files within a single file.
@@ -22,16 +22,25 @@ There are two variants of the format:
 
 :License: BSD 3-Clause
 
-:Version: 2021.6.6
+:Version: 2022.2.2
 
 Requirements
 ------------
-* `CPython >= 3.7 <https://www.python.org>`_
-* `Numpy 1.15 <https://www.numpy.org>`_
-* `Tifffile 2020.6.3 <https://pypi.org/project/tifffile/>`_
+This release has been tested with the following requirements and dependencies
+(other versions may work):
+
+* `CPython 3.8.10, 3.9.10, 3.10.2 64-bit <https://www.python.org>`_
+* `Numpy 1.21.5 <https://pypi.org/project/numpy/>`_
+* `Tifffile 2021.11.2 <https://pypi.org/project/tifffile/>`_
 
 Revisions
 ---------
+2022.2.2
+    Add type hints.
+    Add main function.
+    Add FileSystemAbc abstract base class.
+    Remove OifFile.tiffs (breaking).
+    Drop support for Python 3.7 and numpy < 1.19 (NEP29).
 2021.6.6
     Fix unclosed file warnings.
 2020.9.18
@@ -89,6 +98,7 @@ dtype('uint16')
 
 Extract the OIB file content to an OIF file and associated data directory:
 
+>>> import tempfile
 >>> tempdir = tempfile.mkdtemp()
 >>> oib2oif('test.oib', location=tempdir)
 Saving ... done.
