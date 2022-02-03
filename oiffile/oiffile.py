@@ -1,6 +1,6 @@
 # oiffile.py
 
-# Copyright (c) 2012-2021, Christoph Gohlke
+# Copyright (c) 2012-2022, Christoph Gohlke
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -39,7 +39,7 @@ There are two variants of the format:
 
 * OIF (Olympus Image File) is a multi-file format that includes a main setting
   file (.oif) and an associated directory with data and setting files (.tif,
-  .bmp, .txt, .pyt, .roi, and .lut).
+  .bmp, .txt, .pty, .roi, and .lut).
 
 * OIB (Olympus Image Binary) is a compound document file, storing OIF and
   associated files within a single file.
@@ -52,16 +52,25 @@ There are two variants of the format:
 
 :License: BSD 3-Clause
 
-:Version: 2021.6.6
+:Version: 2022.2.2
 
 Requirements
 ------------
-* `CPython >= 3.7 <https://www.python.org>`_
-* `Numpy 1.15 <https://www.numpy.org>`_
-* `Tifffile 2020.6.3 <https://pypi.org/project/tifffile/>`_
+This release has been tested with the following requirements and dependencies
+(other versions may work):
+
+* `CPython 3.8.10, 3.9.10, 3.10.2 64-bit <https://www.python.org>`_
+* `Numpy 1.21.5 <https://pypi.org/project/numpy/>`_
+* `Tifffile 2021.11.2 <https://pypi.org/project/tifffile/>`_
 
 Revisions
 ---------
+2022.2.2
+    Add type hints.
+    Add main function.
+    Add FileSystemAbc abstract base class.
+    Remove OifFile.tiffs (breaking).
+    Drop support for Python 3.7 and numpy < 1.19 (NEP29).
 2021.6.6
     Fix unclosed file warnings.
 2020.9.18
@@ -119,6 +128,7 @@ dtype('uint16')
 
 Extract the OIB file content to an OIF file and associated data directory:
 
+>>> import tempfile
 >>> tempdir = tempfile.mkdtemp()
 >>> oib2oif('test.oib', location=tempdir)
 Saving ... done.
@@ -141,33 +151,47 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 """
 
-__version__ = '2021.6.6'
+from __future__ import annotations
 
-__all__ = (
+__version__ = '2022.2.2'
+
+__all__ = [
     'imread',
     'oib2oif',
     'OifFile',
     'OifFileError',
     'OibFileSystem',
     'OifFileSystem',
+    'FileSystemAbc',
     'SettingsFile',
     'CompoundFile',
     'filetime',
-)
+]
 
 import os
+import sys
 import re
+import abc
 import struct
 from io import BytesIO
 from glob import glob
 from datetime import datetime
 
+from typing import (
+    Any,
+    BinaryIO,
+    Generator,
+    Literal,
+    Iterable,
+    Iterator,
+)
+
 import numpy
 
-from tifffile import TiffFile, TiffSequence, lazyattr, natural_sorted
+from tifffile import TiffFile, TiffSequence, natural_sorted
 
 
-def imread(filename, *args, **kwargs):
+def imread(filename: str | os.PathLike, *args, **kwargs) -> numpy.ndarray:
     """Return image data from OIF or OIB file as numpy array.
 
     'args' and 'kwargs' are arguments to OifFile.asarray().
@@ -178,7 +202,9 @@ def imread(filename, *args, **kwargs):
     return result
 
 
-def oib2oif(filename, location='', verbose=1):
+def oib2oif(
+    filename: str | os.PathLike, location: str = '', verbose: int = 1
+) -> None:
     """Convert OIB file to OIF."""
     with OibFileSystem(filename) as oib:
         oib.saveas_oif(location=location, verbose=verbose)
@@ -204,22 +230,27 @@ class OifFile:
 
     """
 
-    def __init__(self, filename):
+    filename: str
+    filesystem: FileSystemAbc
+    mainfile: SettingsFile
+    _files_flat: dict[str, str]
+    _series: tuple[TiffSequence, ...] | None
+
+    def __init__(self, filename: str | os.PathLike) -> None:
         """Open OIF or OIB file and read main settings."""
         self.filename = filename = os.fspath(filename)
         if filename.lower().endswith('.oif'):
             self.filesystem = OifFileSystem(filename)
-            self.is_oib = False
         else:
             self.filesystem = OibFileSystem(filename)
-            self.is_oib = True
         self.mainfile = self.filesystem.settings
         # map file names to storage names (flattened name space)
         self._files_flat = {
             os.path.basename(f): f for f in self.filesystem.files()
         }
+        self._series = None
 
-    def open_file(self, filename):
+    def open_file(self, filename: str) -> BinaryIO:
         """Return open file object from path name."""
         try:
             return self.filesystem.open_file(
@@ -228,21 +259,24 @@ class OifFile:
         except (KeyError, OSError) as exc:
             raise FileNotFoundError(f'No such file: {filename}') from exc
 
-    def glob(self, pattern='*'):
+    def glob(self, pattern: str = '*') -> Iterator[str]:
         """Return iterator over unsorted file names matching pattern."""
         if pattern == '*':
             return self.filesystem.files()
-        pattern = pattern.replace('.', r'\.').replace('*', '.*')
-        pattern = re.compile(pattern)
-        return (f for f in self.filesystem.files() if pattern.match(f))
+        ptrn = re.compile(pattern.replace('.', r'\.').replace('*', '.*'))
+        return (f for f in self.filesystem.files() if ptrn.match(f))
 
     @property
-    def axes(self):
+    def is_oib(self) -> bool:
+        return isinstance(self.filesystem, OibFileSystem)
+
+    @property
+    def axes(self) -> str:
         """Return order of axes in image data from mainfile."""
         return self.mainfile['Axis Parameter Common']['AxisOrder'][::-1]
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...]:
         """Return shape of image data from mainfile."""
         size = {
             self.mainfile[f'Axis {i} Parameters Common']['AxisCode']: int(
@@ -253,44 +287,41 @@ class OifFile:
         return tuple(size[ax] for ax in self.axes)
 
     @property
-    def dtype(self):
+    def dtype(self) -> numpy.dtype:
         """Return dtype of image data from mainfile."""
         bitcount = int(
             self.mainfile['Reference Image Parameter']['ValidBitCounts']
         )
         return numpy.dtype('<u2' if bitcount > 8 else '<u2')
 
-    @lazyattr
-    def series(self):
+    @property
+    def series(self) -> tuple[TiffSequence, ...]:
         """Return tuple of TiffSequence of sorted TIFF files."""
-        series = {}
+        if self._series is not None:
+            return self._series
+        tiffiles: dict[str, list[str]] = {}
         for fname in self.glob('*.tif'):
             key = ''.join(
                 c for c in os.path.split(fname)[-1][:-4] if c.isalpha()
             )
-            if key in series:
-                series[key].append(fname)
+            if key in tiffiles:
+                tiffiles[key].append(fname)
             else:
-                series[key] = [fname]
-        series = [
+                tiffiles[key] = [fname]
+        series = tuple(
             TiffSequence(
                 natural_sorted(files), imread=self.asarray, pattern='axes'
             )
-            for files in series.values()
-        ]
+            for files in tiffiles.values()
+        )
         if len(series) > 1:
             series = tuple(
                 reversed(sorted(series, key=lambda x: len(x.files)))
             )
+        self._series = series
         return series
 
-    @property
-    def tiffs(self):
-        """Return first TiffSequence."""
-        # required for compatibility with cmapfile < 2020.1.1
-        return self.series[0]
-
-    def asarray(self, series=0, **kwargs):
+    def asarray(self, series: int = 0, **kwargs) -> numpy.ndarray:
         """Return image data from TIFF file(s) as numpy array.
 
         By default the data from the TIFF files in the first image series
@@ -310,38 +341,74 @@ class OifFile:
             fh.close()
         return result
 
-    def close(self):
+    def close(self) -> None:
         """Close file handle."""
         self.filesystem.close()
 
-    def __enter__(self):
+    def __enter__(self) -> OifFile:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
-    def __str__(self):
+    def __repr__(self) -> str:
+        filename = os.path.split(self.filename)[-1]
+        return f'<{self.__class__.__name__} {filename!r}>'
+
+    def __str__(self) -> str:
         """Return string with information about OifFile."""
         # info = self.mainfile['Version Info']
-        s = [
-            self.__class__.__name__,
-            os.path.normpath(os.path.normcase(self.filename)),
+        return indent(
+            repr(self),
             f'axes: {self.axes}',
-            'shape: {}'.format(', '.join(str(i) for i in self.shape)),
+            f'shape: {self.shape}',
             f'dtype: {self.dtype}',
             # f'system name: {info.get("SystemName", "None")}',
             # f'system version: {info.get("SystemVersion", "None")}',
             # f'file version: {info.get("FileVersion", "None")}',
-        ]
-        if len(self.series) > 1:
-            s.append(f'series: {len(self.series)}')
-        return '\n '.join(s)
+            # indent(f'series: {len(self.series)}', *self.series),
+            f'series: {len(self.series)}',
+        )
 
 
-class OifFileSystem:
+class FileSystemAbc(metaclass=abc.ABCMeta):
+    """Abstract base class for structures with key."""
+
+    name: str
+    version: str
+    filename: str
+    mainfile: str
+    settings: SettingsFile
+
+    @abc.abstractmethod
+    def open_file(self, filename: str) -> BinaryIO:
+        """Return file object from path name."""
+
+    @abc.abstractmethod
+    def files(self) -> Iterator[str]:
+        """Return iterator over unsorted files in FileSystem."""
+
+    def close(self) -> None:
+        """Close file handle."""
+
+    def __repr__(self) -> str:
+        return (
+            f'<{self.__class__.__name__} {os.path.split(self.filename)[-1]!r}>'
+        )
+
+
+class OifFileSystem(FileSystemAbc):
     """Olympus Image File file system."""
 
-    def __init__(self, filename, storage_ext='.files'):
+    name: str
+    version: str
+    filename: str
+    mainfile: str
+    settings: SettingsFile
+    _files: list[str]
+    _path: str
+
+    def __init__(self, filename: str | os.PathLike, storage_ext='.files'):
         """Open OIF file and read settings."""
         self.filename = filename = os.fspath(filename)
         self._path, self.mainfile = os.path.split(os.path.abspath(filename))
@@ -360,50 +427,56 @@ class OifFileSystem:
         for f in glob(os.path.join(storage, '*')):
             self._files.append(f[pathlen:])
 
-    def open_file(self, filename):
+    def open_file(self, filename: str) -> BinaryIO:
         """Return file object from path name.
 
-        File object must be closed.
+        File object must be closed by user.
 
         """
         return open(os.path.join(self._path, filename), 'rb')
 
-    def files(self):
+    def files(self) -> Iterator[str]:
         """Return iterator over unsorted files in OIF."""
         return iter(self._files)
 
-    def glob(self, pattern):
+    def glob(self, pattern: str) -> Iterator[str]:
         """Return iterator of path names matching the specified pattern."""
-        pattern = pattern.replace('.', r'\.').replace('*', '.*')
-        pattern = re.compile(pattern)
-        return (f for f in self.files() if pattern.match(f))
+        ptrn = re.compile(pattern.replace('.', r'\.').replace('*', '.*'))
+        return (f for f in self.files() if ptrn.match(f))
 
-    def close(self):
+    def close(self) -> None:
         """Close file handle."""
 
-    def __enter__(self):
+    def __enter__(self) -> OifFileSystem:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string with information about OifFileSystem."""
-        return '\n '.join(
-            (
-                self.__class__.__name__,
-                os.path.normpath(os.path.normcase(self.filename)),
-                f'name: {self.name}',
-                f'version: {self.version}',
-                f'mainfile: {self.mainfile}',
-            )
+        return indent(
+            repr(self),
+            f'name: {self.name}',
+            f'version: {self.version}',
+            f'mainfile: {self.mainfile}',
         )
 
 
-class OibFileSystem:
+class OibFileSystem(FileSystemAbc):
     """Olympus Image Binary file system."""
 
-    def __init__(self, filename):
+    name: str
+    version: str
+    filename: str
+    mainfile: str
+    settings: SettingsFile
+    com: CompoundFile
+    compression: str
+    _files: dict[str, str]
+    _folders: dict[str, str]
+
+    def __init__(self, filename: str | os.PathLike) -> None:
         """Open compound document and read OibInfo.txt settings."""
         self.filename = filename = os.fspath(filename)
         self.com = CompoundFile(filename)
@@ -428,18 +501,18 @@ class OibFileSystem:
             self.open_file(self.mainfile), name=self.mainfile
         )
 
-    def open_file(self, filename):
+    def open_file(self, filename: str) -> BinaryIO:
         """Return file object from case sensitive path name."""
         try:
             return self.com.open_file(self._files[filename])
         except KeyError as exc:
             raise FileNotFoundError(f'No such file: {filename}') from exc
 
-    def files(self):
+    def files(self) -> Iterator[str]:
         """Return iterator over unsorted files in OIB."""
         return iter(self._files.keys())
 
-    def saveas_oif(self, location='', verbose=0):
+    def saveas_oif(self, location: str = '', verbose: int = 0) -> None:
         """Save all streams in OIB file as separate files.
 
         Raise OSError if target files or directories already exist.
@@ -473,32 +546,29 @@ class OibFileSystem:
         if verbose == 1:
             print(' done.')
 
-    def close(self):
+    def close(self) -> None:
         """Close file handle."""
         self.com.close()
 
-    def __enter__(self):
+    def __enter__(self) -> OibFileSystem:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Return string with information about OibFileSystem."""
-        return '\n '.join(
-            (
-                self.__class__.__name__,
-                os.path.normpath(os.path.normcase(self.filename)),
-                f'name: {self.name}',
-                f'version: {self.version}',
-                f'mainfile: {self.mainfile}',
-                f'compression: {self.compression}',
-            )
+        return indent(
+            repr(self),
+            f'name: {self.name}',
+            f'version: {self.version}',
+            f'mainfile: {self.mainfile}',
+            f'compression: {self.compression}',
         )
 
 
 class SettingsFile(dict):
-    """Olympus settings file (oif, txt, pyt, roi, lut).
+    """Olympus settings file (oif, txt, pty, roi, lut).
 
     Settings files contain little endian utf-16 encoded strings, except for
     [ColorLUTData] sections, which contain uint8 binary arrays.
@@ -508,7 +578,9 @@ class SettingsFile(dict):
 
     """
 
-    def __init__(self, arg, name=None):
+    name: str
+
+    def __init__(self, arg, name: str | None = None) -> None:
         """Read settings file and parse into nested dictionaries.
 
         Parameters
@@ -535,31 +607,31 @@ class SettingsFile(dict):
 
         if content[:4] == b'\xFF\xFE\x5B\x00':
             # UTF16 BOM
-            content = content.rsplit(
+            content_list = content.rsplit(
                 b'[\x00C\x00o\x00l\x00o\x00r\x00L\x00U\x00T\x00'
                 b'D\x00a\x00t\x00a\x00]\x00\x0D\x00\x0A\x00',
                 1,
             )
-            if len(content) > 1:
+            if len(content_list) > 1:
                 self['ColorLUTData'] = numpy.fromstring(
-                    content[1], 'uint8'
+                    content_list[1], 'uint8'
                 ).reshape(-1, 4)
-            content = content[0].decode('utf-16')
+            contents = content_list[0].decode('utf-16')
         elif content[:1] == b'[':
             # try UTF-8
-            content = content.rsplit(b'[ColorLUTData]\r\n', 1)
-            if len(content) > 1:
+            content_list = content.rsplit(b'[ColorLUTData]\r\n', 1)
+            if len(content_list) > 1:
                 self['ColorLUTData'] = numpy.fromstring(
-                    content[1], 'uint8'
+                    content_list[1], 'uint8'
                 ).reshape(-1, 4)
             try:
-                content = content[0].decode()
+                contents = content_list[0].decode()
             except Exception as exc:
                 raise ValueError('not a valid settings file') from exc
         else:
             raise ValueError('not a valid settings file')
 
-        for line in content.splitlines():
+        for line in contents.splitlines():
             line = line.strip()
             if line.startswith(';'):
                 continue
@@ -569,9 +641,12 @@ class SettingsFile(dict):
                 key, value = line.split('=')
                 properties[key] = astype(value)
 
-    def __str__(self):
+    def __repr__(self) -> str:
+        return f'<{self.__class__.__name__} {self.name!r}>'
+
+    def __str__(self) -> str:
         """Return string with information about SettingsFile."""
-        return '\n '.join((self.__class__.__name__, format_dict(self)))
+        return indent(repr(self), format_dict(self))
 
 
 class CompoundFile:
@@ -584,6 +659,27 @@ class CompoundFile:
 
     """
 
+    filename: str
+    clsid: bytes | None
+    version_minor: int
+    version_major: int
+    byteorder: Literal['<']
+    dir_len: int
+    fat_len: int
+    dir_start: int
+    mini_stream_cutof_size: int
+    minifat_start: int
+    minifat_len: int
+    difat_start: int
+    difat_len: int
+    sec_size: int
+    short_sec_size: int
+    _files: dict[str, DirectoryEntry]
+    _fat: list[Any]
+    _minifat: list[Any]
+    _difat: list[Any]
+    _dirs: list[DirectoryEntry]
+
     MAXREGSECT = 0xFFFFFFFA
     DIFSECT = 0xFFFFFFFC
     FATSECT = 0xFFFFFFFD
@@ -592,7 +688,7 @@ class CompoundFile:
     MAXREGSID = 0xFFFFFFFA
     NOSTREAM = 0xFFFFFFFF
 
-    def __init__(self, filename):
+    def __init__(self, filename: str | os.PathLike) -> None:
         """Initialize instance from file."""
         self.filename = filename = os.fspath(filename)
         self._fh = open(filename, 'rb')
@@ -602,7 +698,7 @@ class CompoundFile:
             self._fh.close()
             raise
 
-    def _fromfile(self):
+    def _fromfile(self) -> None:
         """Initialize instance from file."""
         if self._fh.read(8) != b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
             raise ValueError('not a compound document file')
@@ -626,14 +722,17 @@ class CompoundFile:
             self.difat_len,
         ) = struct.unpack('<16sHHHHHHIIIIIIIIII', self._fh.read(68))
 
-        self.byteorder = {0xFFFE: '<', 0xFEFF: '>'}[byteorder]
-        if self.byteorder != '<':
+        if byteorder == 0xFFFE:
+            self.byteorder = '<'
+        else:
+            # 0xFEFF
+            # self.byteorder = '>'
             raise NotImplementedError('big-endian byte order not supported')
 
         if self.clsid == b'\x00' * 16:
             self.clsid = None
         if self.clsid is not None:
-            raise OifFileError(f'cannot handle clsid {self.clsid}')
+            raise OifFileError(f'cannot handle clsid {self.clsid!r}')
 
         if self.version_minor != 0x3E:
             raise OifFileError(
@@ -656,8 +755,8 @@ class CompoundFile:
                 f'and sector_shift {sector_shift}'
             )
 
-        self.sec_size = 2 ** sector_shift
-        self.short_sec_size = 2 ** mini_sector_shift
+        self.sec_size = 2**sector_shift
+        self.short_sec_size = 2**mini_sector_shift
 
         secfmt = '<' + ('I' * (self.sec_size // 4))
         # read DIFAT
@@ -713,7 +812,9 @@ class CompoundFile:
         dirs = self._dirs
         visited = [False] * len(self._dirs)
 
-        def parse(dirid, path):
+        def parse(
+            dirid: int, path: list[str]
+        ) -> Generator[tuple[str, DirectoryEntry], None, None]:
             # return iterator over all file names and their directory entries
             # TODO: replace with red-black tree parser
             if dirid == nostream or visited[dirid]:
@@ -729,7 +830,7 @@ class CompoundFile:
 
         self._files = dict(parse(self._dirs[0].child_id, []))
 
-    def _read_stream(self, direntry):
+    def _read_stream(self, direntry: DirectoryEntry) -> bytes:
         """Return content of stream."""
         if direntry.stream_size < self.mini_stream_cutof_size:
             result = b''.join(self._mini_sec_chain(direntry.sector_start))
@@ -737,78 +838,82 @@ class CompoundFile:
             result = b''.join(self._sec_chain(direntry.sector_start))
         return result[: direntry.stream_size]
 
-    def _sec_read(self, secid):
+    def _sec_read(self, secid: int) -> bytes:
         """Return content of sector from file."""
         self._fh.seek(self.sec_size + secid * self.sec_size)
         return self._fh.read(self.sec_size)
 
-    def _sec_chain(self, secid):
+    def _sec_chain(self, secid: int) -> Generator[bytes, None, None]:
         """Return iterator over FAT sector chain content."""
         while secid != CompoundFile.ENDOFCHAIN:
             if secid <= CompoundFile.MAXREGSECT:
                 yield self._sec_read(secid)
             secid = self._fat[secid]
 
-    def _mini_sec_read(self, secid):
+    def _mini_sec_read(self, secid: int) -> bytes:
         """Return content of sector from mini stream."""
         pos = secid * self.short_sec_size
         return self._ministream[pos : pos + self.short_sec_size]
 
-    def _mini_sec_chain(self, secid):
+    def _mini_sec_chain(self, secid: int) -> Generator[bytes, None, None]:
         """Return iterator over mini FAT sector chain content."""
         while secid != CompoundFile.ENDOFCHAIN:
             if secid <= CompoundFile.MAXREGSECT:
                 yield self._mini_sec_read(secid)
             secid = self._minifat[secid]
 
-    def files(self):
+    def files(self) -> Iterable[str]:
         """Return sequence of file names."""
         return self._files.keys()
 
-    def direntry(self, name):
+    def direntry(self, name: str) -> DirectoryEntry:
         """Return DirectoryEntry of filename."""
         return self._files[name]
 
-    def open_file(self, filename):
+    def open_file(self, filename: str) -> BytesIO:
         """Return stream as file like object."""
         return BytesIO(self._read_stream(self._files[filename]))
 
-    def format_tree(self):
+    def format_tree(self) -> str:
         """Return formatted string with list of all files."""
         return '\n'.join(natural_sorted(self.files()))
 
-    def close(self):
+    def close(self) -> None:
         """Close file handle."""
         self._fh.close()
 
-    def __enter__(self):
+    def __enter__(self) -> CompoundFile:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.close()
 
-    def __str__(self):
+    def __repr__(self) -> str:
+        filename = os.path.split(self.filename)[-1]
+        return f'<{self.__class__.__name__} {filename!r}>'
+
+    def __str__(self) -> str:
         """Return string with information about CompoundFile."""
-        s = [
-            self.__class__.__name__,
-            os.path.normpath(os.path.normcase(self.filename)),
-        ]
-        for attr in (
-            'clsid',
-            'version_minor',
-            'version_major',
-            'byteorder',
-            'dir_len',
-            'fat_len',
-            'dir_start',
-            'mini_stream_cutof_size',
-            'minifat_start',
-            'minifat_len',
-            'difat_start',
-            'difat_len',
-        ):
-            s.append(f'{attr}: {getattr(self, attr)}')
-        return '\n '.join(s)
+        return indent(
+            repr(self),
+            *(
+                f'{attr}: {getattr(self, attr)}'
+                for attr in (
+                    'clsid',
+                    'version_minor',
+                    'version_major',
+                    'byteorder',
+                    'dir_len',
+                    'fat_len',
+                    'dir_start',
+                    'mini_stream_cutof_size',
+                    'minifat_start',
+                    'minifat_len',
+                    'difat_start',
+                    'difat_len',
+                )
+            ),
+        )
 
 
 class DirectoryEntry:
@@ -831,7 +936,22 @@ class DirectoryEntry:
         'is_storage',
     )
 
-    def __init__(self, data, version_major):
+    name: str
+    entry_type: int
+    color: int
+    left_sibling_id: int
+    right_sibling_id: int
+    child_id: int
+    clsid: bytes | None
+    user_flags: int
+    create_time: datetime | None
+    modify_time: datetime | None
+    sector_start: int
+    stream_size: int
+    is_stream: bool
+    is_storage: bool
+
+    def __init__(self, data: bytes, version_major: int) -> None:
         """Initialize directory entry from 128 bytes."""
         (
             name,
@@ -865,23 +985,34 @@ class DirectoryEntry:
         self.is_stream = self.entry_type == 2
         self.is_storage = self.entry_type == 1
 
-    def __str__(self):
+    def __repr__(self) -> str:
+        return f'<{self.__class__.__name__} {self.name!r}>'
+
+    def __str__(self) -> str:
         """Return string with information about DirectoryEntry."""
-        s = [self.__class__.__name__]
-        for attr in self.__slots__[1:]:
-            s.append(f'{attr}: {getattr(self, attr)}')
-        return '\n '.join(s)
+        return indent(
+            repr(self),
+            *(f'{attr}: {getattr(self, attr)}' for attr in self.__slots__[1:]),
+        )
+
+
+def indent(*args) -> str:
+    """Return joined string representations of objects with indented lines."""
+    text = '\n'.join(str(arg) for arg in args)
+    return '\n'.join(
+        ('  ' + line if line else line) for line in text.splitlines() if line
+    )[2:]
 
 
 def format_dict(
-    adict,
-    prefix=' ',
-    indent=' ',
-    bullets=('', ''),
-    excludes=('_',),
-    linelen=79,
-    trim=1,
-):
+    adict: dict[str, Any],
+    prefix: str = ' ',
+    indent: str = ' ',
+    bullets: tuple[str, str] = ('', ''),
+    excludes: tuple[str] = ('_',),
+    linelen: int = 79,
+    trim: int = 1,
+) -> str:
     """Return pretty-print of nested dictionary."""
     result = []
     for k, v in sorted(adict.items(), key=lambda x: str(x[0]).lower()):
@@ -899,7 +1030,7 @@ def format_dict(
     return '\n'.join(result)
 
 
-def astype(value, types=None):
+def astype(value: str, types: Iterable[type] | None = None) -> Any:
     """Return argument as one of types if possible."""
     if value[0] in '\'"':
         return value[1:-1]
@@ -913,7 +1044,7 @@ def astype(value, types=None):
     return value
 
 
-def filetime(ft):
+def filetime(ft: int) -> datetime | None:
     """Return Python datetime from Microsoft FILETIME number."""
     if not ft:
         return None
@@ -921,9 +1052,48 @@ def filetime(ft):
     return datetime.utcfromtimestamp(sec).replace(microsecond=(nsec // 10))
 
 
-if __name__ == '__main__':
-    import doctest
-    import tempfile  # noqa: used in doctrings
+def main(argv: list[str] | None = None) -> int:
+    """Oiffile command line usage main function.
 
-    numpy.set_printoptions(suppress=True, precision=5)
-    doctest.testmod(optionflags=doctest.ELLIPSIS)
+    ``python -m oiffile file_or_directory``
+
+    """
+    if argv is None:
+        argv = sys.argv
+
+    if len(argv) > 1 and '--test' in argv:
+        import doctest
+
+        m: Any
+        try:
+            import oiffile.oiffile
+
+            m = oiffile.oiffile
+        except ImportError:
+            m = None
+        print('running doctests')
+        numpy.set_printoptions(suppress=True, precision=5)
+        doctest.testmod(m, optionflags=doctest.ELLIPSIS)
+        return 0
+
+    if len(argv) != 2:
+        print('Usage: python -m oiffile file_or_directory')
+        return 0
+
+    from tifffile import imshow
+    from matplotlib import pyplot
+
+    with OifFile(sys.argv[1]) as oif:
+        print(oif)
+        for series in oif.series:
+            # print(series)
+            image = oif.asarray()
+            figure = pyplot.figure()
+            imshow(image, figure=figure)
+        pyplot.show()
+
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
