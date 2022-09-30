@@ -7,28 +7,37 @@ import re
 
 from setuptools import setup
 
+
+def search(pattern, code, flags=0):
+    # return first match for pattern in code
+    match = re.search(pattern, code, flags)
+    if match is None:
+        raise ValueError(f'{pattern!r} not found')
+    return match.groups()[0]
+
+
 with open('oiffile/oiffile.py') as fh:
     code = fh.read()
 
-version = re.search(r"__version__ = '(.*?)'", code).groups()[0]
+version = search(r"__version__ = '(.*?)'", code)
 
-description = re.search(r'"""(.*)\.(?:\r\n|\r|\n)', code).groups()[0]
+description = search(r'"""(.*)\.(?:\r\n|\r|\n)', code)
 
-readme = re.search(
+readme = search(
     r'(?:\r\n|\r|\n){2}"""(.*)"""(?:\r\n|\r|\n){2}[__version__|from]',
     code,
     re.MULTILINE | re.DOTALL,
-).groups()[0]
+)
 
 readme = '\n'.join(
     [description, '=' * len(description)] + readme.splitlines()[1:]
 )
 
-license = re.search(
+license = search(
     r'(# Copyright.*?(?:\r\n|\r|\n))(?:\r\n|\r|\n)+""',
     code,
     re.MULTILINE | re.DOTALL,
-).groups()[0]
+)
 
 license = license.replace('# ', '').replace('#', '')
 
@@ -42,17 +51,17 @@ if 'sdist' in sys.argv:
 setup(
     name='oiffile',
     version=version,
+    license='BSD',
     description=description,
     long_description=readme,
     author='Christoph Gohlke',
-    author_email='cgohlke@uci.edu',
-    url='https://www.lfd.uci.edu/~gohlke/',
+    author_email='cgohlke@cgohlke.com',
+    url='https://www.cgohlke.com',
     project_urls={
         'Bug Tracker': 'https://github.com/cgohlke/oiffile/issues',
         'Source Code': 'https://github.com/cgohlke/oiffile',
         # 'Documentation': 'https://',
     },
-    license='BSD',
     packages=['oiffile'],
     python_requires='>=3.8',
     install_requires=['numpy>=1.19.2', 'tifffile>=2021.11.2'],
@@ -67,5 +76,6 @@ setup(
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
     ],
 )
