@@ -7,56 +7,66 @@ software for confocal microscopy.
 
 There are two variants of the format:
 
-* OIF (Olympus Image File) is a multi-file format that includes a main setting
+- OIF (Olympus Image File) is a multi-file format that includes a main setting
   file (.oif) and an associated directory with data and setting files (.tif,
   .bmp, .txt, .pty, .roi, and .lut).
 
-* OIB (Olympus Image Binary) is a compound document file, storing OIF and
+- OIB (Olympus Image Binary) is a compound document file, storing OIF and
   associated files within a single file.
 
-:Author:
-  `Christoph Gohlke <https://www.lfd.uci.edu/~gohlke/>`_
-
-:Organization:
-  Laboratory for Fluorescence Dynamics. University of California, Irvine
-
+:Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD 3-Clause
-
-:Version: 2022.2.2
+:Version: 2022.9.29
 
 Requirements
 ------------
+
 This release has been tested with the following requirements and dependencies
 (other versions may work):
 
-* `CPython 3.8.10, 3.9.10, 3.10.2 64-bit <https://www.python.org>`_
-* `Numpy 1.21.5 <https://pypi.org/project/numpy/>`_
-* `Tifffile 2021.11.2 <https://pypi.org/project/tifffile/>`_
+- `CPython 3.8.10, 3.9.13, 3.10.7, 3.11.0rc2 <https://www.python.org>`_
+- `Numpy 1.22.4 <https://pypi.org/project/numpy/>`_
+- `Tifffile 2022.8.12 <https://pypi.org/project/tifffile/>`_
 
 Revisions
 ---------
+
+2022.9.29
+
+- Switch to Google style docstrings.
+
 2022.2.2
-    Add type hints.
-    Add main function.
-    Add FileSystemAbc abstract base class.
-    Remove OifFile.tiffs (breaking).
-    Drop support for Python 3.7 and numpy < 1.19 (NEP29).
+
+- Add type hints.
+- Add main function.
+- Add FileSystemAbc abstract base class.
+- Remove OifFile.tiffs (breaking).
+- Drop support for Python 3.7 and numpy < 1.19 (NEP29).
+
 2021.6.6
-    Fix unclosed file warnings.
+
+- Fix unclosed file warnings.
+
 2020.9.18
-    Remove support for Python 3.6 (NEP 29).
-    Support os.PathLike file names.
-    Fix unclosed files.
+
+- Remove support for Python 3.6 (NEP 29).
+- Support os.PathLike file names.
+- Fix unclosed files.
+
 2020.1.18
-    Fix indentation error.
+
+- Fix indentation error.
+
 2020.1.1
-    Support multiple image series.
-    Parse shape and dtype from settings file.
-    Remove support for Python 2.7 and 3.5.
-    Update copyright.
+
+- Support multiple image series.
+- Parse shape and dtype from settings file.
+- Remove support for Python 2.7 and 3.5.
+- Update copyright.
 
 Notes
 -----
+
 The API is not stable yet and might change between revisions.
 
 No specification document is available.
@@ -65,6 +75,7 @@ Tested only with files produced on Olympus FV1000 hardware.
 
 Examples
 --------
+
 Read the image from an OIB file as numpy array:
 
 >>> image = imread('test.oib')
