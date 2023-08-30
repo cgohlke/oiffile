@@ -1,6 +1,6 @@
 # oiffile.py
 
-# Copyright (c) 2012-2022, Christoph Gohlke
+# Copyright (c) 2012-2023, Christoph Gohlke
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -46,20 +46,43 @@ There are two variants of the format:
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD 3-Clause
-:Version: 2022.9.29
+:Version: 2023.8.30
+
+Quickstart
+----------
+
+Install the oiffile package and all dependencies from the
+`Python Package Index <https://pypi.org/project/oiffile/>`_::
+
+    python -m pip install -U oiffile[all]
+
+View image and metadata stored in a OIF or OIB file::
+
+    python -m oiffile file.oif
+
+See `Examples`_ for using the programming interface.
+
+Source code and support are available on
+`GitHub <https://github.com/cgohlke/oiffile>`_.
 
 Requirements
 ------------
 
-This release has been tested with the following requirements and dependencies
+This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython 3.8.10, 3.9.13, 3.10.7, 3.11.0rc2 <https://www.python.org>`_
-- `Numpy 1.22.4 <https://pypi.org/project/numpy/>`_
-- `Tifffile 2022.8.12 <https://pypi.org/project/tifffile/>`_
+- `CPython <https://www.python.org>`_ 3.9.13, 3.10.11, 3.11.5, 3.12rc, 64-bit
+- `NumPy <https://pypi.org/project/numpy/>`_ 1.25.2
+- `Tifffile <https://pypi.org/project/tifffile/>`_  2023.8.30
 
 Revisions
 ---------
+
+2023.8.30
+
+- Fix linting issues.
+- Add py.typed marker.
+- Drop support for Python 3.8 and numpy < 1.22 (NEP29).
 
 2022.9.29
 
@@ -164,7 +187,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 from __future__ import annotations
 
-__version__ = '2022.9.29'
+__version__ = '2023.8.30'
 
 __all__ = [
     'imread',
@@ -179,33 +202,27 @@ __all__ = [
     'filetime',
 ]
 
-import os
-import sys
-import re
 import abc
+import os
+import re
 import struct
-from io import BytesIO
+import sys
+from datetime import datetime, timezone
 from glob import glob
-from datetime import datetime
-
-import numpy
-
-from tifffile import TiffFile, TiffSequence, natural_sorted
-
+from io import BytesIO
 from typing import TYPE_CHECKING
 
+import numpy
+from tifffile import TiffFile, TiffSequence, natural_sorted
+
 if TYPE_CHECKING:
-    from typing import (
-        Any,
-        BinaryIO,
-        Generator,
-        Literal,
-        Iterable,
-        Iterator,
-    )
+    from collections.abc import Generator, Iterable, Iterator
+    from typing import Any, BinaryIO, Literal
+
+    from numpy.typing import NDArray
 
 
-def imread(filename: str | os.PathLike, /, **kwargs) -> numpy.ndarray:
+def imread(filename: str | os.PathLike[Any], /, **kwargs) -> NDArray[Any]:
     """Return image data from OIF or OIB file.
 
     Parameters:
@@ -221,7 +238,11 @@ def imread(filename: str | os.PathLike, /, **kwargs) -> numpy.ndarray:
 
 
 def oib2oif(
-    filename: str | os.PathLike, /, location: str = '', *, verbose: int = 1
+    filename: str | os.PathLike[Any],
+    /,
+    location: str = '',
+    *,
+    verbose: int = 1,
 ) -> None:
     """Convert OIB file to OIF.
 
@@ -252,15 +273,17 @@ class OifFile:
 
     filename: str
     """Name of OIB or OIF file."""
+
     filesystem: FileSystemAbc
     """Underlying file system instance."""
+
     mainfile: SettingsFile
     """Main settings."""
 
     _files_flat: dict[str, str]
     _series: tuple[TiffSequence, ...] | None
 
-    def __init__(self, filename: str | os.PathLike, /) -> None:
+    def __init__(self, filename: str | os.PathLike[Any], /) -> None:
         self.filename = filename = os.fspath(filename)
         if filename.lower().endswith('.oif'):
             self.filesystem = OifFileSystem(filename)
@@ -367,7 +390,7 @@ class OifFile:
         self._series = series
         return series
 
-    def asarray(self, series: int | str = 0, **kwargs) -> numpy.ndarray:
+    def asarray(self, series: int | str = 0, **kwargs) -> NDArray[Any]:
         """Return image data from TIFF file(s) as numpy array.
 
         Parameters:
@@ -380,8 +403,8 @@ class OifFile:
         """
         if isinstance(series, int):
             return self.series[series].asarray(**kwargs)
+        fh = self.open_file(series)
         try:
-            fh = self.open_file(series)
             with TiffFile(fh, name=series) as tif:
                 result = tif.asarray(**kwargs)
         finally:
@@ -422,12 +445,16 @@ class FileSystemAbc(metaclass=abc.ABCMeta):
 
     filename: str
     """Name of OIB or OIF file."""
+
     name: str
     """Name from settings file."""
+
     version: str
     """Version from settings file."""
+
     mainfile: str
     """Name of main settings file."""
+
     settings: SettingsFile
     """Main settings."""
 
@@ -472,7 +499,9 @@ class OifFileSystem(FileSystemAbc):
     _files: list[str]
     _path: str
 
-    def __init__(self, filename: str | os.PathLike, /, storage_ext='.files'):
+    def __init__(
+        self, filename: str | os.PathLike[Any], /, storage_ext='.files'
+    ):
         self.filename = filename = os.fspath(filename)
         self._path, self.mainfile = os.path.split(os.path.abspath(filename))
         self.settings = SettingsFile(filename, name=self.mainfile)
@@ -541,7 +570,7 @@ class OibFileSystem(FileSystemAbc):
     _files: dict[str, str]
     _folders: dict[str, str]
 
-    def __init__(self, filename: str | os.PathLike, /) -> None:
+    def __init__(self, filename: str | os.PathLike[Any], /) -> None:
         # open compound document and read OibInfo.txt settings
         self.filename = filename = os.fspath(filename)
         self.com = CompoundFile(filename)
@@ -766,7 +795,7 @@ class CompoundFile:
     MAXREGSID = 0xFFFFFFFA
     NOSTREAM = 0xFFFFFFFF
 
-    def __init__(self, filename: str | os.PathLike, /) -> None:
+    def __init__(self, filename: str | os.PathLike[Any], /) -> None:
         self.filename = filename = os.fspath(filename)
         self._fh = open(filename, 'rb')
         try:
@@ -1154,7 +1183,9 @@ def filetime(ft: int, /) -> datetime | None:
     if not ft:
         return None
     sec, nsec = divmod(ft - 116444736000000000, 10000000)
-    return datetime.utcfromtimestamp(sec).replace(microsecond=(nsec // 10))
+    return datetime.fromtimestamp(sec, timezone.utc).replace(
+        microsecond=nsec // 10
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1185,8 +1216,8 @@ def main(argv: list[str] | None = None) -> int:
         print('Usage: python -m oiffile file_or_directory')
         return 0
 
-    from tifffile import imshow
     from matplotlib import pyplot
+    from tifffile import imshow
 
     with OifFile(sys.argv[1]) as oif:
         print(oif)
