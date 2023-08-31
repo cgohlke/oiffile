@@ -16,20 +16,43 @@ There are two variants of the format:
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD 3-Clause
-:Version: 2022.9.29
+:Version: 2023.8.30
+
+Quickstart
+----------
+
+Install the oiffile package and all dependencies from the
+`Python Package Index <https://pypi.org/project/oiffile/>`_::
+
+    python -m pip install -U oiffile[all]
+
+View image and metadata stored in a OIF or OIB file::
+
+    python -m oiffile file.oif
+
+See `Examples`_ for using the programming interface.
+
+Source code and support are available on
+`GitHub <https://github.com/cgohlke/oiffile>`_.
 
 Requirements
 ------------
 
-This release has been tested with the following requirements and dependencies
+This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython 3.8.10, 3.9.13, 3.10.7, 3.11.0rc2 <https://www.python.org>`_
-- `Numpy 1.22.4 <https://pypi.org/project/numpy/>`_
-- `Tifffile 2022.8.12 <https://pypi.org/project/tifffile/>`_
+- `CPython <https://www.python.org>`_ 3.9.13, 3.10.11, 3.11.5, 3.12rc, 64-bit
+- `NumPy <https://pypi.org/project/numpy/>`_ 1.25.2
+- `Tifffile <https://pypi.org/project/tifffile/>`_  2023.8.30
 
 Revisions
 ---------
+
+2023.8.30
+
+- Fix linting issues.
+- Add py.typed marker.
+- Drop support for Python 3.8 and numpy < 1.22 (NEP29).
 
 2022.9.29
 
