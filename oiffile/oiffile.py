@@ -1,6 +1,6 @@
 # oiffile.py
 
-# Copyright (c) 2012-2023, Christoph Gohlke
+# Copyright (c) 2012-2024, Christoph Gohlke
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,7 +29,7 @@
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
 
-"""Read Olympus(r) image files (OIF and OIB).
+"""Read Olympus image files (OIF and OIB).
 
 Oiffile is a Python library to read image and metadata from Olympus Image
 Format files. OIF is the native file format of the Olympus FluoView(tm)
@@ -46,7 +46,7 @@ There are two variants of the format:
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD 3-Clause
-:Version: 2023.8.30
+:Version: 2024.5.24
 
 Quickstart
 ----------
@@ -54,7 +54,7 @@ Quickstart
 Install the oiffile package and all dependencies from the
 `Python Package Index <https://pypi.org/project/oiffile/>`_::
 
-    python -m pip install -U oiffile[all]
+    python -m pip install -U "oiffile[all]"
 
 View image and metadata stored in a OIF or OIB file::
 
@@ -71,12 +71,17 @@ Requirements
 This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython <https://www.python.org>`_ 3.9.13, 3.10.11, 3.11.5, 3.12rc, 64-bit
-- `NumPy <https://pypi.org/project/numpy/>`_ 1.25.2
-- `Tifffile <https://pypi.org/project/tifffile/>`_  2023.8.30
+- `CPython <https://www.python.org>`_ 3.9.13, 3.10.11, 3.11.9, 3.12.3, 64-bit
+- `NumPy <https://pypi.org/project/numpy/>`_ 1.26.4
+- `Tifffile <https://pypi.org/project/tifffile/>`_ 2024.5.22
 
 Revisions
 ---------
+
+2024.5.24
+
+- Support NumPy 2.
+- Fix docstring examples not correctly rendered on GitHub.
 
 2023.8.30
 
@@ -120,8 +125,6 @@ Revisions
 Notes
 -----
 
-The API is not stable yet and might change between revisions.
-
 No specification document is available.
 
 Tested only with files produced on Olympus FV1000 hardware.
@@ -142,9 +145,10 @@ Read the image from a single TIFF file in an OIB file:
 >>> with OifFile('test.oib') as oib:
 ...     filename = natural_sorted(oib.glob('*.tif'))[0]
 ...     image = oib.asarray(filename)
+...
 >>> filename
 'Storage00001/s_C001.tif'
->>> image[95, 216]
+>>> print(image[95, 216])
 820
 
 Access metadata and the OIB main file:
@@ -154,6 +158,7 @@ Access metadata and the OIB main file:
 ...     oib.shape
 ...     oib.dtype
 ...     dataname = oib.mainfile['File Info']['DataName']
+...
 'CYX'
 (3, 256, 256)
 dtype('uint16')
@@ -178,6 +183,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 >>> with CompoundFile('test.oib') as com:
 ...     info = com.open_file('OibInfo.txt')
 ...     len(com.files())
+...
 14
 >>> info = SettingsFile(info, 'OibInfo.txt')
 >>> info['OibSaveInfo']['Version']
@@ -187,7 +193,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 from __future__ import annotations
 
-__version__ = '2023.8.30'
+__version__ = '2024.5.24'
 
 __all__ = [
     'imread',
@@ -710,11 +716,11 @@ class SettingsFile(dict):
         finally:
             stream.close()
 
-        if content[:4] == b'\xFF\xFE\x5B\x00':
+        if content[:4] == b'\xff\xfe\x5b\x00':
             # UTF16 BOM
             content_list = content.rsplit(
                 b'[\x00C\x00o\x00l\x00o\x00r\x00L\x00U\x00T\x00'
-                b'D\x00a\x00t\x00a\x00]\x00\x0D\x00\x0A\x00',
+                b'D\x00a\x00t\x00a\x00]\x00\x0d\x00\x0a\x00',
                 1,
             )
             if len(content_list) > 1:
