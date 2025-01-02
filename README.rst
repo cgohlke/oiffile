@@ -19,7 +19,7 @@ There are two variants of the format:
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD 3-Clause
-:Version: 2024.5.24
+:Version: 2025.1.1
 
 Quickstart
 ----------
@@ -29,7 +29,7 @@ Install the oiffile package and all dependencies from the
 
     python -m pip install -U "oiffile[all]"
 
-View image and metadata stored in a OIF or OIB file::
+View image and metadata stored in an OIF or OIB file::
 
     python -m oiffile file.oif
 
@@ -44,12 +44,17 @@ Requirements
 This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython <https://www.python.org>`_ 3.9.13, 3.10.11, 3.11.9, 3.12.3, 64-bit
-- `NumPy <https://pypi.org/project/numpy/>`_ 1.26.4
-- `Tifffile <https://pypi.org/project/tifffile/>`_ 2024.5.22
+- `CPython <https://www.python.org>`_ 3.10.11, 3.11.9, 3.12.8, 3.13.1 64-bit
+- `NumPy <https://pypi.org/project/numpy/>`_ 2.1.3
+- `Tifffile <https://pypi.org/project/tifffile/>`_ 2024.12.12
 
 Revisions
 ---------
+
+2025.1.1
+
+- Improve type hints.
+- Drop support for Python 3.9, support Python 3.13.
 
 2024.5.24
 
