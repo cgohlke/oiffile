@@ -45,8 +45,8 @@ There are two variants of the format:
   associated files within a single file.
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
-:License: BSD 3-Clause
-:Version: 2025.1.1
+:License: BSD-3-Clause
+:Version: 2025.5.10
 
 Quickstart
 ----------
@@ -71,12 +71,17 @@ Requirements
 This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython <https://www.python.org>`_ 3.10.11, 3.11.9, 3.12.8, 3.13.1 64-bit
-- `NumPy <https://pypi.org/project/numpy/>`_ 2.1.3
-- `Tifffile <https://pypi.org/project/tifffile/>`_ 2024.12.12
+- `CPython <https://www.python.org>`_ 3.10.11, 3.11.9, 3.12.10, 3.13.3 64-bit
+- `NumPy <https://pypi.org/project/numpy/>`_ 2.2.5
+- `Tifffile <https://pypi.org/project/tifffile/>`_ 2025.5.10
 
 Revisions
 ---------
+
+2025.5.10
+
+- Remove doctest command line option.
+- Support Python 3.14.
 
 2025.1.1
 
@@ -147,6 +152,7 @@ array([820,  50, 436], dtype=uint16)
 
 Read the image from a single TIFF file in an OIB file:
 
+>>> from tifffile import natural_sorted
 >>> with OifFile('test.oib') as oib:
 ...     filename = natural_sorted(oib.glob('*.tif'))[0]
 ...     image = oib.asarray(filename)
@@ -198,7 +204,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 from __future__ import annotations
 
-__version__ = '2025.1.1'
+__version__ = '2025.5.10'
 
 __all__ = [
     '__version__',
@@ -396,9 +402,7 @@ class OifFile:
             for files in tiffiles.values()
         )
         if len(series) > 1:
-            series = tuple(
-                reversed(sorted(series, key=lambda x: len(x.files)))
-            )
+            series = tuple(reversed(sorted(series, key=lambda x: len(x))))
         self._series = series
         return series
 
@@ -1210,21 +1214,6 @@ def main(argv: list[str] | None = None) -> int:
     """
     if argv is None:
         argv = sys.argv
-
-    if len(argv) > 1 and '--test' in argv:
-        import doctest
-
-        m: Any
-        try:
-            import oiffile.oiffile
-
-            m = oiffile.oiffile
-        except ImportError:
-            m = None
-        print('running doctests')
-        numpy.set_printoptions(suppress=True, precision=5)
-        doctest.testmod(m, optionflags=doctest.ELLIPSIS)
-        return 0
 
     if len(argv) != 2:
         print('Usage: python -m oiffile file_or_directory')
