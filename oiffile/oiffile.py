@@ -46,7 +46,8 @@ There are two variants of the format:
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD-3-Clause
-:Version: 2025.5.10
+:Version: 2025.12.12
+:DOI: `10.5281/zenodo.17905223 <https://doi.org/10.5281/zenodo.17905223>`_
 
 Quickstart
 ----------
@@ -71,12 +72,17 @@ Requirements
 This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython <https://www.python.org>`_ 3.10.11, 3.11.9, 3.12.10, 3.13.3 64-bit
-- `NumPy <https://pypi.org/project/numpy/>`_ 2.2.5
-- `Tifffile <https://pypi.org/project/tifffile/>`_ 2025.5.10
+- `CPython <https://www.python.org>`_ 3.11.9, 3.12.10, 3.13.11 3.14.2 64-bit
+- `NumPy <https://pypi.org/project/numpy>`_ 2.3.5
+- `Tifffile <https://pypi.org/project/tifffile/>`_ 2025.10.16
 
 Revisions
 ---------
+
+2025.12.12
+
+- Derive OifFileError from ValueError.
+- Drop support for Python 3.10.
 
 2025.5.10
 
@@ -204,20 +210,20 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 from __future__ import annotations
 
-__version__ = '2025.5.10'
+__version__ = '2025.12.12'
 
 __all__ = [
-    '__version__',
-    'imread',
-    'oib2oif',
+    'CompoundFile',
+    'FileSystemAbc',
+    'OibFileSystem',
     'OifFile',
     'OifFileError',
-    'OibFileSystem',
     'OifFileSystem',
-    'FileSystemAbc',
     'SettingsFile',
-    'CompoundFile',
+    '__version__',
     'filetime',
+    'imread',
+    'oib2oif',
 ]
 
 import abc
@@ -235,7 +241,8 @@ from tifffile import TiffFile, TiffSequence, natural_sorted
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable, Iterator
-    from typing import IO, Any, BinaryIO, Literal
+    from types import TracebackType
+    from typing import IO, Any, BinaryIO, Literal, Self
 
     from numpy.typing import NDArray
 
@@ -251,8 +258,7 @@ def imread(filename: str | os.PathLike[Any], /, **kwargs: Any) -> NDArray[Any]:
 
     """
     with OifFile(filename) as oif:
-        result = oif.asarray(**kwargs)
-    return result
+        return oif.asarray(**kwargs)
 
 
 def oib2oif(
@@ -277,7 +283,7 @@ def oib2oif(
         oib.saveas_oif(location=location, verbose=verbose)
 
 
-class OifFileError(Exception):
+class OifFileError(ValueError):
     """Exception to raise issues with OIF or OIB structure."""
 
 
@@ -379,7 +385,7 @@ class OifFile:
         bitcount = int(
             self.mainfile['Reference Image Parameter']['ValidBitCounts']
         )
-        return numpy.dtype('<u2' if bitcount > 8 else '<u2')
+        return numpy.dtype('<u2' if bitcount > 8 else 'u1')
 
     @property
     def series(self) -> tuple[TiffSequence, ...]:
@@ -402,7 +408,7 @@ class OifFile:
             for files in tiffiles.values()
         )
         if len(series) > 1:
-            series = tuple(reversed(sorted(series, key=lambda x: len(x))))
+            series = tuple(sorted(series, key=lambda x: len(x), reverse=True))
         self._series = series
         return series
 
@@ -431,10 +437,15 @@ class OifFile:
         """Close file handle."""
         self.filesystem.close()
 
-    def __enter__(self) -> OifFile:
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def __repr__(self) -> str:
@@ -487,6 +498,7 @@ class FileSystemAbc(metaclass=abc.ABCMeta):
     def files(self) -> Iterator[str]:
         """Return iterator over unsorted files in FileSystem."""
 
+    @abc.abstractmethod
     def close(self) -> None:
         """Close file handle."""
 
@@ -517,7 +529,7 @@ class OifFileSystem(FileSystemAbc):
 
     def __init__(
         self, filename: str | os.PathLike[Any], /, storage_ext: str = '.files'
-    ):
+    ) -> None:
         self.filename = filename = os.fspath(filename)
         self._path, self.mainfile = os.path.split(os.path.abspath(filename))
         self.settings = SettingsFile(filename, name=self.mainfile)
@@ -553,10 +565,15 @@ class OifFileSystem(FileSystemAbc):
     def close(self) -> None:
         """Close file handle."""
 
-    def __enter__(self) -> OifFileSystem:
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def __str__(self) -> str:
@@ -647,34 +664,39 @@ class OibFileSystem(FileSystemAbc):
         mainfile = os.path.join(location, self.mainfile)
         if os.path.exists(mainfile):
             raise FileExistsError(mainfile + ' already exists')
-        for folder in self._folders.keys():
-            folder = os.path.join(location, self._folders.get(folder, ''))
-            if os.path.exists(folder):
-                raise FileExistsError(folder + ' already exists')
-            os.makedirs(folder)
+        for folder in self._folders:
+            path = os.path.join(location, self._folders.get(folder, ''))
+            if os.path.exists(path):
+                raise FileExistsError(path + ' already exists')
+            os.makedirs(path)
         if verbose:
-            print('Saving', mainfile, end=' ')
-        for f in self._files.keys():
+            print('Saving', mainfile, end=' ')  # noqa: T201
+        for f in self._files:
             folder, name = os.path.split(f)
             folder = os.path.join(location, self._folders.get(folder, ''))
             path = os.path.join(folder, name)
             if verbose == 1:
-                print(end='.')
+                print(end='.')  # noqa: T201
             elif verbose > 1:
-                print(path)
+                print(path)  # noqa: T201
             with open(path, 'w+b') as fh:
                 fh.write(self.open_file(f).read())
         if verbose == 1:
-            print(' done.')
+            print(' done.')  # noqa: T201
 
     def close(self) -> None:
         """Close file handle."""
         self.com.close()
 
-    def __enter__(self) -> OibFileSystem:
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def __str__(self) -> str:
@@ -722,7 +744,7 @@ class SettingsFile(dict):  # type: ignore[type-arg]
         dict.__init__(self)
         if isinstance(file, (str, os.PathLike)):
             self.name = os.path.split(file)[-1]
-            fh = open(file, 'rb')
+            fh = open(file, 'rb')  # noqa: SIM115
         else:
             self.name = str(name)
             fh = file
@@ -740,19 +762,21 @@ class SettingsFile(dict):  # type: ignore[type-arg]
                 1,
             )
             if len(content_list) > 1:
-                self['ColorLUTData'] = numpy.fromstring(
-                    content_list[1],
-                    dtype=numpy.uint8,  # type: ignore[call-overload]
-                ).reshape(-1, 4)
+                self['ColorLUTData'] = (
+                    numpy.frombuffer(content_list[1], dtype=numpy.uint8)
+                    .copy()
+                    .reshape(-1, 4)
+                )
             contents = content_list[0].decode('utf-16')
         elif content[:1] == b'[':
             # try UTF-8
             content_list = content.rsplit(b'[ColorLUTData]\r\n', 1)
             if len(content_list) > 1:
-                self['ColorLUTData'] = numpy.fromstring(
-                    content_list[1],
-                    dtype=numpy.uint8,  # type: ignore[call-overload]
-                ).reshape(-1, 4)
+                self['ColorLUTData'] = (
+                    numpy.frombuffer(content_list[1], dtype=numpy.uint8)
+                    .copy()
+                    .reshape(-1, 4)
+                )
             try:
                 contents = content_list[0].decode()
             except Exception as exc:
@@ -761,7 +785,7 @@ class SettingsFile(dict):  # type: ignore[type-arg]
             raise ValueError('not a valid settings file')
 
         for line in contents.splitlines():
-            line = line.strip()
+            line = line.strip()  # noqa: PLW2901
             if line.startswith(';'):
                 continue
             if line.startswith('[') and line.endswith(']'):
@@ -821,7 +845,7 @@ class CompoundFile:
 
     def __init__(self, filename: str | os.PathLike[Any], /) -> None:
         self.filename = filename = os.fspath(filename)
-        self._fh = open(filename, 'rb')
+        self._fh = open(filename, 'rb')  # noqa: SIM115
         try:
             self._fromfile()
         except Exception:
@@ -889,7 +913,7 @@ class CompoundFile:
             struct.unpack('<' + ('I' * 109), self._fh.read(436))
         )
         nextsec = self.difat_start
-        for i in range(self.difat_len):
+        for _i in range(self.difat_len):
             if nextsec >= CompoundFile.MAXREGSID:
                 raise OifFileError(f'{nextsec=} >= {CompoundFile.MAXREGSID=}')
             sec = struct.unpack(secfmt, self._sec_read(nextsec))
@@ -911,10 +935,9 @@ class CompoundFile:
         self._dirs = []
         for sector in self._sec_chain(self.dir_start):
             for i in range(0, self.sec_size, 128):
-                direntry = DirectoryEntry(
-                    sector[i : i + 128], self.version_major
+                self._dirs.append(
+                    DirectoryEntry(sector[i : i + 128], self.version_major)
                 )
-                self._dirs.append(direntry)
         # read root storage
         if len(self._dirs) <= 0:
             raise OifFileError('no directories found')
@@ -946,11 +969,11 @@ class CompoundFile:
             visited[dirid] = True
             de = dirs[dirid]
             if de.is_stream:
-                yield join(path + [de.name]), de
+                yield join([*path, de.name]), de
             yield from parse(de.left_sibling_id, path)
             yield from parse(de.right_sibling_id, path)
             if de.is_storage:
-                yield from parse(de.child_id, path + [de.name])
+                yield from parse(de.child_id, [*path, de.name])
 
         self._files = dict(parse(self._dirs[0].child_id, []))
 
@@ -1016,10 +1039,15 @@ class CompoundFile:
         """Close file handle."""
         self._fh.close()
 
-    def __enter__(self) -> CompoundFile:
+    def __enter__(self) -> Self:
         return self
 
-    def __exit__(self, exc_type: Any, exc_value: Any, traceback: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def __repr__(self) -> str:
@@ -1061,20 +1089,20 @@ class DirectoryEntry:
     """
 
     __slots__ = (
-        'name',
-        'entry_type',
-        'color',
-        'left_sibling_id',
-        'right_sibling_id',
         'child_id',
         'clsid',
-        'user_flags',
+        'color',
         'create_time',
+        'entry_type',
+        'is_storage',
+        'is_stream',
+        'left_sibling_id',
         'modify_time',
+        'name',
+        'right_sibling_id',
         'sector_start',
         'stream_size',
-        'is_stream',
-        'is_storage',
+        'user_flags',
     )
 
     name: str
@@ -1154,7 +1182,8 @@ def format_dict(
 ) -> str:
     """Return pretty-print of nested dictionary."""
     result = []
-    for k, v in sorted(adict.items(), key=lambda x: str(x[0]).lower()):
+    for item in sorted(adict.items(), key=lambda x: str(x[0]).lower()):
+        k, v = item
         if any(k.startswith(e) for e in excludes):
             continue
         if isinstance(v, dict):
@@ -1216,15 +1245,15 @@ def main(argv: list[str] | None = None) -> int:
         argv = sys.argv
 
     if len(argv) != 2:
-        print('Usage: python -m oiffile file_or_directory')
+        print('Usage: python -m oiffile file_or_directory')  # noqa: T201
         return 0
 
     from matplotlib import pyplot
     from tifffile import imshow
 
     with OifFile(sys.argv[1]) as oif:
-        print(oif)
-        print(oif.mainfile)
+        print(oif)  # noqa: T201
+        print(oif.mainfile)  # noqa: T201
         for series in oif.series:
             # print(series)
             image = series.asarray()
