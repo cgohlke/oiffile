@@ -47,7 +47,7 @@ readme = search(
     re.MULTILINE | re.DOTALL,
 )
 readme = '\n'.join(
-    [description, '=' * len(description)] + readme.splitlines()[1:]
+    [description, '=' * len(description), *readme.splitlines()[1:]]
 )
 
 if 'sdist' in sys.argv:
@@ -84,7 +84,7 @@ setup(
     },
     packages=['oiffile'],
     package_data={'oiffile': ['py.typed']},
-    python_requires='>=3.10',
+    python_requires='>=3.11',
     install_requires=['numpy', 'tifffile'],
     extras_require={'all': ['matplotlib']},
     platforms=['any'],
@@ -94,7 +94,6 @@ setup(
         'Intended Audience :: Developers',
         'Operating System :: OS Independent',
         'Programming Language :: Python :: 3 :: Only',
-        'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
         'Programming Language :: Python :: 3.13',
