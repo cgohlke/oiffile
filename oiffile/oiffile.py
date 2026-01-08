@@ -1,6 +1,6 @@
 # oiffile.py
 
-# Copyright (c) 2012-2025, Christoph Gohlke
+# Copyright (c) 2012-2026, Christoph Gohlke
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,7 @@ There are two variants of the format:
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD-3-Clause
-:Version: 2025.12.12
+:Version: 2026.1.8
 :DOI: `10.5281/zenodo.17905223 <https://doi.org/10.5281/zenodo.17905223>`_
 
 Quickstart
@@ -72,12 +72,16 @@ Requirements
 This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython <https://www.python.org>`_ 3.11.9, 3.12.10, 3.13.11 3.14.2 64-bit
-- `NumPy <https://pypi.org/project/numpy>`_ 2.3.5
-- `Tifffile <https://pypi.org/project/tifffile/>`_ 2025.10.16
+- `CPython <https://www.python.org>`_ 3.11.9, 3.12.10, 3.13.11, 3.14.2 64-bit
+- `NumPy <https://pypi.org/project/numpy>`_ 2.4.0
+- `Tifffile <https://pypi.org/project/tifffile/>`_ 2025.12.20
 
 Revisions
 ---------
+
+2026.1.8
+
+- Improve code quality.
 
 2025.12.12
 
@@ -96,47 +100,9 @@ Revisions
 
 2024.5.24
 
-- Support NumPy 2.
-- Fix docstring examples not correctly rendered on GitHub.
+- …
 
-2023.8.30
-
-- Fix linting issues.
-- Add py.typed marker.
-- Drop support for Python 3.8 and numpy < 1.22 (NEP29).
-
-2022.9.29
-
-- Switch to Google style docstrings.
-
-2022.2.2
-
-- Add type hints.
-- Add main function.
-- Add FileSystemAbc abstract base class.
-- Remove OifFile.tiffs (breaking).
-- Drop support for Python 3.7 and numpy < 1.19 (NEP29).
-
-2021.6.6
-
-- Fix unclosed file warnings.
-
-2020.9.18
-
-- Remove support for Python 3.6 (NEP 29).
-- Support os.PathLike file names.
-- Fix unclosed files.
-
-2020.1.18
-
-- Fix indentation error.
-
-2020.1.1
-
-- Support multiple image series.
-- Parse shape and dtype from settings file.
-- Remove support for Python 2.7 and 3.5.
-- Update copyright.
+Refer to the CHANGES file for older revisions.
 
 Notes
 -----
@@ -210,7 +176,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 from __future__ import annotations
 
-__version__ = '2025.12.12'
+__version__ = '2026.1.8'
 
 __all__ = [
     'CompoundFile',
@@ -332,7 +298,8 @@ class OifFile:
                 self._files_flat.get(filename, filename)
             )
         except (KeyError, OSError) as exc:
-            raise FileNotFoundError(f'No such file: {filename}') from exc
+            msg = f'no such file: {filename}'
+            raise FileNotFoundError(msg) from exc
 
     def glob(self, pattern: str = '*', /) -> Iterator[str]:
         """Return iterator over unsorted file names matching pattern.
@@ -538,9 +505,8 @@ class OifFileSystem(FileSystemAbc):
         # check that storage directory exists
         storage = os.path.join(self._path, self.mainfile + storage_ext)
         if not os.path.exists(storage) or not os.path.isdir(storage):
-            raise OSError(
-                f'OIF storage path not found: {self.mainfile}{storage_ext}'
-            )
+            msg = f'OIF storage path not found: {self.mainfile}{storage_ext}'
+            raise OSError(msg)
         # list all files
         pathlen = len(self._path + os.path.sep)
         self._files = [self.mainfile]
@@ -638,7 +604,8 @@ class OibFileSystem(FileSystemAbc):
         try:
             return self.com.open_file(self._files[filename])
         except KeyError as exc:
-            raise FileNotFoundError(f'No such file: {filename}') from exc
+            msg = f'no such file: {filename}'
+            raise FileNotFoundError(msg) from exc
 
     def files(self) -> Iterator[str]:
         """Return iterator over unsorted files in OIB."""
@@ -765,7 +732,7 @@ class SettingsFile(dict):  # type: ignore[type-arg]
                 self['ColorLUTData'] = (
                     numpy.frombuffer(content_list[1], dtype=numpy.uint8)
                     .copy()
-                    .reshape(-1, 4)
+                    .reshape((-1, 4))
                 )
             contents = content_list[0].decode('utf-16')
         elif content[:1] == b'[':
@@ -775,14 +742,16 @@ class SettingsFile(dict):  # type: ignore[type-arg]
                 self['ColorLUTData'] = (
                     numpy.frombuffer(content_list[1], dtype=numpy.uint8)
                     .copy()
-                    .reshape(-1, 4)
+                    .reshape((-1, 4))
                 )
             try:
                 contents = content_list[0].decode()
             except Exception as exc:
-                raise ValueError('not a valid settings file') from exc
+                msg = 'not a valid settings file'
+                raise ValueError(msg) from exc
         else:
-            raise ValueError('not a valid settings file')
+            msg = 'not a valid settings file'
+            raise ValueError(msg)
 
         for line in contents.splitlines():
             line = line.strip()  # noqa: PLW2901
@@ -855,7 +824,8 @@ class CompoundFile:
     def _fromfile(self) -> None:
         """Initialize instance from file."""
         if self._fh.read(8) != b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1':
-            raise ValueError('not a compound document file')
+            msg = 'not a compound document file'
+            raise ValueError(msg)
         (
             self.clsid,
             self.version_minor,
@@ -881,17 +851,21 @@ class CompoundFile:
         else:
             # 0xFEFF
             # self.byteorder = '>'
-            raise NotImplementedError('big-endian byte order not supported')
+            msg = 'big-endian byte order not supported'
+            raise NotImplementedError(msg)
 
         if self.clsid == b'\x00' * 16:
             self.clsid = None
         if self.clsid is not None:
-            raise OifFileError(f'cannot handle {self.clsid=!r}')
+            msg = f'cannot handle {self.clsid=!r}'
+            raise OifFileError(msg)
 
         if self.version_minor != 0x3E:
-            raise OifFileError(f'cannot handle {self.version_minor=}')
+            msg = f'cannot handle {self.version_minor=}'
+            raise OifFileError(msg)
         if mini_sector_shift != 0x0006:
-            raise OifFileError(f'cannot handle {mini_sector_shift=}')
+            msg = f'cannot handle {mini_sector_shift=}'
+            raise OifFileError(msg)
         if not (
             (self.version_major == 0x4 and sector_shift == 0x000C)
             or (
@@ -900,9 +874,8 @@ class CompoundFile:
                 and self.dir_len == 0
             )
         ):
-            raise OifFileError(
-                f'cannot handle {self.version_major=} and {sector_shift=}'
-            )
+            msg = f'cannot handle {self.version_major=} and {sector_shift=}'
+            raise OifFileError(msg)
 
         self.sec_size = 2**sector_shift
         self.short_sec_size = 2**mini_sector_shift
@@ -915,7 +888,8 @@ class CompoundFile:
         nextsec = self.difat_start
         for _i in range(self.difat_len):
             if nextsec >= CompoundFile.MAXREGSID:
-                raise OifFileError(f'{nextsec=} >= {CompoundFile.MAXREGSID=}')
+                msg = f'{nextsec=} >= {CompoundFile.MAXREGSID=}'
+                raise OifFileError(msg)
             sec = struct.unpack(secfmt, self._sec_read(nextsec))
             self._difat.extend(sec[:-1])
             nextsec = sec[-1]
@@ -940,16 +914,18 @@ class CompoundFile:
                 )
         # read root storage
         if len(self._dirs) <= 0:
-            raise OifFileError('no directories found')
+            msg = 'no directories found'
+            raise OifFileError(msg)
         root = self._dirs[0]
         if root.name != 'Root Entry':
-            raise OifFileError(f'no root directory found, got {root.name!r}')
+            msg = f'no root directory found, got {root.name!r}'
+            raise OifFileError(msg)
         if root.create_time is not None:  # and root.modify_time is None
-            raise OifFileError(f'invalid {root.create_time=}')
+            msg = f'invalid {root.create_time=}'
+            raise OifFileError(msg)
         if root.stream_size % self.short_sec_size != 0:
-            raise OifFileError(
-                f'{root.stream_size=} does not match {self.short_sec_size=}'
-            )
+            msg = f'{root.stream_size=} does not match {self.short_sec_size=}'
+            raise OifFileError(msg)
         # read mini stream
         self._ministream = b''.join(self._sec_chain(root.sector_start))
         self._ministream = self._ministream[: root.stream_size]
@@ -1143,9 +1119,11 @@ class DirectoryEntry:
             self.clsid = None
 
         if name_len % 2 != 0 or name_len > 64:
-            raise OifFileError(f'invalid {name_len=}')
+            msg = f'invalid {name_len=}'
+            raise OifFileError(msg)
         if self.color not in (0, 1):
-            raise OifFileError(f'invalid {self.color=}')
+            msg = f'invalid {self.color=}'
+            raise OifFileError(msg)
 
         self.name = name[: name_len - 2].decode('utf-16')
         self.create_time = filetime(create_time)
