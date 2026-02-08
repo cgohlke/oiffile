@@ -46,7 +46,7 @@ There are two variants of the format:
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD-3-Clause
-:Version: 2026.1.8
+:Version: 2026.2.8
 :DOI: `10.5281/zenodo.17905223 <https://doi.org/10.5281/zenodo.17905223>`_
 
 Quickstart
@@ -72,12 +72,16 @@ Requirements
 This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython <https://www.python.org>`_ 3.11.9, 3.12.10, 3.13.11, 3.14.2 64-bit
-- `NumPy <https://pypi.org/project/numpy>`_ 2.4.0
-- `Tifffile <https://pypi.org/project/tifffile/>`_ 2025.12.20
+- `CPython <https://www.python.org>`_ 3.11.9, 3.12.10, 3.13.12, 3.14.3 64-bit
+- `NumPy <https://pypi.org/project/numpy>`_ 2.4.2
+- `Tifffile <https://pypi.org/project/tifffile/>`_ 2026.1.28
 
 Revisions
 ---------
+
+2026.2.8
+
+- Fix code review issues.
 
 2026.1.8
 
@@ -176,7 +180,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 
 from __future__ import annotations
 
-__version__ = '2026.1.8'
+__version__ = '2026.2.8'
 
 __all__ = [
     'CompoundFile',
@@ -297,9 +301,9 @@ class OifFile:
             return self.filesystem.open_file(
                 self._files_flat.get(filename, filename)
             )
-        except (KeyError, OSError) as exc:
+        except (KeyError, OSError):
             msg = f'no such file: {filename}'
-            raise FileNotFoundError(msg) from exc
+            raise FileNotFoundError(msg) from None
 
     def glob(self, pattern: str = '*', /) -> Iterator[str]:
         """Return iterator over unsorted file names matching pattern.
@@ -360,14 +364,14 @@ class OifFile:
         if self._series is not None:
             return self._series
         tiffiles: dict[str, list[str]] = {}
-        for fname in self.glob('*.tif'):
+        for filename in self.glob('*.tif'):
             key = ''.join(
-                c for c in os.path.split(fname)[-1][:-4] if c.isalpha()
+                c for c in os.path.split(filename)[-1][:-4] if c.isalpha()
             )
             if key in tiffiles:
-                tiffiles[key].append(fname)
+                tiffiles[key].append(filename)
             else:
-                tiffiles[key] = [fname]
+                tiffiles[key] = [filename]
         series = tuple(
             TiffSequence(
                 natural_sorted(files), imread=self.asarray, pattern='axes'
@@ -375,7 +379,7 @@ class OifFile:
             for files in tiffiles.values()
         )
         if len(series) > 1:
-            series = tuple(sorted(series, key=lambda x: len(x), reverse=True))
+            series = tuple(sorted(series, key=len, reverse=True))
         self._series = series
         return series
 
@@ -435,7 +439,7 @@ class OifFile:
 
 
 class FileSystemAbc(metaclass=abc.ABCMeta):
-    """Abstract base class for structures with key."""
+    """Abstract base class for OIF and OIB file systems."""
 
     filename: str
     """Name of OIB or OIF file."""
@@ -603,9 +607,9 @@ class OibFileSystem(FileSystemAbc):
         """
         try:
             return self.com.open_file(self._files[filename])
-        except KeyError as exc:
+        except KeyError:
             msg = f'no such file: {filename}'
-            raise FileNotFoundError(msg) from exc
+            raise FileNotFoundError(msg) from None
 
     def files(self) -> Iterator[str]:
         """Return iterator over unsorted files in OIB."""
@@ -614,7 +618,7 @@ class OibFileSystem(FileSystemAbc):
     def saveas_oif(self, location: str = '', *, verbose: int = 0) -> None:
         """Save all streams in OIB file as separate files.
 
-        Raise OSError if target files or directories already exist.
+        Raise FileExistsError if target files or directories already exist.
 
         The main .oif file name and storage names are determined from the
         OibInfo.txt settings.
@@ -623,7 +627,7 @@ class OibFileSystem(FileSystemAbc):
             location:
                 Directory, where files are written.
             verbose:
-                Level of printed status messages.
+                Level of printed status messages (0: none, 1: dots, >1: paths).
 
         """
         if location and not os.path.exists(location):
@@ -646,8 +650,8 @@ class OibFileSystem(FileSystemAbc):
                 print(end='.')  # noqa: T201
             elif verbose > 1:
                 print(path)  # noqa: T201
-            with open(path, 'w+b') as fh:
-                fh.write(self.open_file(f).read())
+            with self.open_file(f) as src, open(path, 'w+b') as fh:
+                fh.write(src.read())
         if verbose == 1:
             print(' done.')  # noqa: T201
 
@@ -679,15 +683,15 @@ class OibFileSystem(FileSystemAbc):
 class SettingsFile(dict):  # type: ignore[type-arg]
     """Olympus settings file (oif, txt, pty, roi, lut).
 
-    Settings files contain little endian utf-16 encoded strings, except for
-    [ColorLUTData] sections, which contain uint8 binary arrays.
+    Settings files contain little endian UTF-16 or UTF-8 encoded strings,
+    except for [ColorLUTData] sections, which contain uint8 binary arrays.
 
     Settings can be accessed as a nested dictionary {section: {key: value}},
     except for {'ColorLUTData': numpy array}.
 
     Parameters:
         file:
-            Name of file or open file containing little endian UTF-16 string.
+            Name of file or open file containing UTF-16 or UTF-8 string.
             File objects are closed.
         name:
             Human readable label of stream.
@@ -753,14 +757,15 @@ class SettingsFile(dict):  # type: ignore[type-arg]
             msg = 'not a valid settings file'
             raise ValueError(msg)
 
+        properties: dict[str, Any] = {}
         for line in contents.splitlines():
             line = line.strip()  # noqa: PLW2901
-            if line.startswith(';'):
+            if not line or line.startswith(';'):
                 continue
             if line.startswith('[') and line.endswith(']'):
                 self[line[1:-1]] = properties = {}
-            else:
-                key, value = line.split('=')
+            elif '=' in line:
+                key, value = line.split('=', 1)
                 properties[key] = astype(value)
 
     def __repr__(self) -> str:
@@ -791,7 +796,7 @@ class CompoundFile:
     dir_len: int
     fat_len: int
     dir_start: int
-    mini_stream_cutof_size: int
+    mini_stream_cutoff_size: int
     minifat_start: int
     minifat_len: int
     difat_start: int
@@ -839,7 +844,7 @@ class CompoundFile:
             self.fat_len,
             self.dir_start,
             _,
-            self.mini_stream_cutof_size,
+            self.mini_stream_cutoff_size,
             self.minifat_start,
             self.minifat_len,
             self.difat_start,
@@ -955,7 +960,7 @@ class CompoundFile:
 
     def _read_stream(self, direntry: DirectoryEntry, /) -> bytes:
         """Return content of stream."""
-        if direntry.stream_size < self.mini_stream_cutof_size:
+        if direntry.stream_size < self.mini_stream_cutoff_size:
             result = b''.join(self._mini_sec_chain(direntry.sector_start))
         else:
             result = b''.join(self._sec_chain(direntry.sector_start))
@@ -1043,7 +1048,7 @@ class CompoundFile:
                     'dir_len',
                     'fat_len',
                     'dir_start',
-                    'mini_stream_cutof_size',
+                    'mini_stream_cutoff_size',
                     'minifat_start',
                     'minifat_len',
                     'difat_start',
@@ -1171,7 +1176,7 @@ def format_dict(
             result.append(f'{prefix}{bullets[1]}{k}: {v}')
         else:
             result.append((f'{prefix}{bullets[0]}{k}: {v}')[:linelen].rstrip())
-    if trim > 0:
+    if trim > 0 and result:
         result[0] = result[0][trim:]
     return '\n'.join(result)
 
@@ -1186,7 +1191,9 @@ def astype(arg: str, types: Iterable[type] | None = None) -> Any:
             Possible types of value. By default, int, float, and str.
 
     """
-    if arg[0] in '\'"':
+    if not arg:
+        return arg
+    if len(arg) >= 2 and arg[0] in '\'"' and arg[-1] == arg[0]:
         return arg[1:-1]
     if types is None:
         types = int, float, str
@@ -1201,35 +1208,40 @@ def astype(arg: str, types: Iterable[type] | None = None) -> Any:
 def filetime(ft: int, /) -> datetime | None:
     """Return Python datetime from Microsoft FILETIME number.
 
+    Return None if `ft` is 0 or cannot be converted.
+
     Parameters:
         ft: Microsoft FILETIME number.
 
     """
     if not ft:
         return None
-    sec, nsec = divmod(ft - 116444736000000000, 10000000)
-    return datetime.fromtimestamp(sec, timezone.utc).replace(
-        microsecond=nsec // 10
-    )
+    try:
+        sec, nsec = divmod(ft - 116444736000000000, 10000000)
+        return datetime.fromtimestamp(sec, timezone.utc).replace(
+            microsecond=nsec // 10
+        )
+    except (OSError, OverflowError, ValueError):
+        return None
 
 
 def main(argv: list[str] | None = None) -> int:
     """Oiffile command line usage main function.
 
-    ``python -m oiffile file_or_directory``
+    ``python -m oiffile oif_or_oib_file``
 
     """
     if argv is None:
         argv = sys.argv
 
     if len(argv) != 2:
-        print('Usage: python -m oiffile file_or_directory')  # noqa: T201
+        print('Usage: python -m oiffile oif_or_oib_file')  # noqa: T201
         return 0
 
     from matplotlib import pyplot
     from tifffile import imshow
 
-    with OifFile(sys.argv[1]) as oif:
+    with OifFile(argv[1]) as oif:
         print(oif)  # noqa: T201
         print(oif.mainfile)  # noqa: T201
         for series in oif.series:
