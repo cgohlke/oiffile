@@ -19,7 +19,7 @@ There are two variants of the format:
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD-3-Clause
-:Version: 2026.1.8
+:Version: 2026.2.8
 :DOI: `10.5281/zenodo.17905223 <https://doi.org/10.5281/zenodo.17905223>`_
 
 Quickstart
@@ -45,12 +45,16 @@ Requirements
 This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython <https://www.python.org>`_ 3.11.9, 3.12.10, 3.13.11, 3.14.2 64-bit
-- `NumPy <https://pypi.org/project/numpy>`_ 2.4.0
-- `Tifffile <https://pypi.org/project/tifffile/>`_ 2025.12.20
+- `CPython <https://www.python.org>`_ 3.11.9, 3.12.10, 3.13.12, 3.14.3 64-bit
+- `NumPy <https://pypi.org/project/numpy>`_ 2.4.2
+- `Tifffile <https://pypi.org/project/tifffile/>`_ 2026.1.28
 
 Revisions
 ---------
+
+2026.2.8
+
+- Fix code review issues.
 
 2026.1.8
 
