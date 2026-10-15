@@ -95,12 +95,12 @@ setup(
     project_urls={
         'Bug Tracker': 'https://github.com/cgohlke/oiffile/issues',
         'Source Code': 'https://github.com/cgohlke/oiffile',
-        # 'Documentation': 'https://',
+        'Documentation': 'https://www.cgohlke.com/docs/oiffile/',
     },
     packages=['oiffile'],
     package_data={'oiffile': ['py.typed']},
-    python_requires='>=3.11',
-    install_requires=['numpy', 'tifffile'],
+    python_requires='>=3.12',
+    install_requires=['numpy>=2.1', 'tifffile>=2026.10.15'],
     extras_require={'all': ['matplotlib']},
     platforms=['any'],
     classifiers=[
@@ -109,9 +109,9 @@ setup(
         'Intended Audience :: Developers',
         'Operating System :: OS Independent',
         'Programming Language :: Python :: 3 :: Only',
-        'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
         'Programming Language :: Python :: 3.13',
         'Programming Language :: Python :: 3.14',
+        'Programming Language :: Python :: 3.15',
     ],
 )
