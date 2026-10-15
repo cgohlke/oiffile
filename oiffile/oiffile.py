@@ -46,7 +46,7 @@ There are two variants of the format:
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD-3-Clause
-:Version: 2026.2.8
+:Version: 2026.10.15
 :DOI: `10.5281/zenodo.17905223 <https://doi.org/10.5281/zenodo.17905223>`_
 
 Quickstart
@@ -57,11 +57,8 @@ Install the oiffile package and all dependencies from the
 
     python -m pip install -U "oiffile[all]"
 
-View image and metadata stored in an OIF or OIB file::
-
-    python -m oiffile file.oif
-
-See `Examples`_ for using the programming interface.
+See `Examples`_ and `Documentation <https://www.cgohlke.com/docs/oiffile/>`_
+for using the programming interface.
 
 Source code and support are available on
 `GitHub <https://github.com/cgohlke/oiffile>`_.
@@ -72,37 +69,33 @@ Requirements
 This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython <https://www.python.org>`_ 3.11.9, 3.12.10, 3.13.12, 3.14.3 64-bit
-- `NumPy <https://pypi.org/project/numpy>`_ 2.4.2
-- `Tifffile <https://pypi.org/project/tifffile/>`_ 2026.1.28
+- `CPython <https://www.python.org>`_ 3.12.10, 3.13.16, 3.14.8, 3.15.0 64-bit
+- `Numpy <https://pypi.org/project/numpy>`_ 2.5.4
+- `Tifffile <https://pypi.org/project/tifffile/>`_ 2026.10.15
 
 Revisions
 ---------
+
+2026.10.15
+
+- Return image data in axes order and shape of mainfile (#2, breaking).
+- Fix image planes lost due to misparsed file names.
+- Fix path traversal in OibFileSystem.saveas_oif.
+- Fix OifFileSystem.open_file reading files outside of dataset.
+- Fix thread-safety of CompoundFile.
+- Raise OifFileError on truncated CompoundFile streams.
+- Fix infinite loop on cyclic sector chains in CompoundFile.
+- Fix OifFile.glob matching.
+- Support line scans.
+- Require tifffile 2026.10.15.
+- Drop support for Python 3.11 and numpy 2.0 (SPEC0).
+- Support Python 3.15.
 
 2026.2.8
 
 - Fix code review issues.
 
 2026.1.8
-
-- Improve code quality.
-
-2025.12.12
-
-- Derive OifFileError from ValueError.
-- Drop support for Python 3.10.
-
-2025.5.10
-
-- Remove doctest command line option.
-- Support Python 3.14.
-
-2025.1.1
-
-- Improve type hints.
-- Drop support for Python 3.9, support Python 3.13.
-
-2024.5.24
 
 - …
 
@@ -117,6 +110,10 @@ Tested only with files produced on Olympus FV1000 hardware.
 
 Examples
 --------
+
+Import functions and classes used in these examples:
+
+>>> from oiffile import CompoundFile, OifFile, SettingsFile, imread, oib2oif
 
 Read the image from an OIB file as numpy array:
 
@@ -176,11 +173,15 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
 >>> info['OibSaveInfo']['Version']
 '2.0.0.0'
 
+Preview image and metadata stored in an OIF or OIB file from the console::
+
+    python -m oiffile test.oif
+
 """
 
 from __future__ import annotations
 
-__version__ = '2026.2.8'
+__version__ = '2026.10.15'
 
 __all__ = [
     'CompoundFile',
@@ -201,7 +202,9 @@ import os
 import re
 import struct
 import sys
+import threading
 from datetime import datetime, timezone
+from fnmatch import fnmatchcase
 from glob import glob
 from io import BytesIO
 from typing import TYPE_CHECKING
@@ -254,7 +257,7 @@ def oib2oif(
 
 
 class OifFileError(ValueError):
-    """Exception to raise issues with OIF or OIB structure."""
+    """Exception to indicate corrupted OIF or OIB file."""
 
 
 class OifFile:
@@ -276,6 +279,7 @@ class OifFile:
 
     _files_flat: dict[str, str]
     _series: tuple[TiffSequence, ...] | None
+    _has_main: bool
 
     def __init__(self, filename: str | os.PathLike[Any], /) -> None:
         self.filename = filename = os.fspath(filename)
@@ -289,6 +293,7 @@ class OifFile:
             os.path.basename(f): f for f in self.filesystem.files()
         }
         self._series = None
+        self._has_main = False
 
     def open_file(self, filename: str, /) -> BinaryIO:
         """Return open file object from path name.
@@ -314,8 +319,7 @@ class OifFile:
         """
         if pattern == '*':
             return self.filesystem.files()
-        ptrn = re.compile(pattern.replace('.', r'\.').replace('*', '.*'))
-        return (f for f in self.filesystem.files() if ptrn.match(f))
+        return (f for f in self.filesystem.files() if fnmatchcase(f, pattern))
 
     @property
     def is_oib(self) -> bool:
@@ -326,7 +330,8 @@ class OifFile:
     def axes(self) -> str:
         """Character codes for dimensions in image array according to mainfile.
 
-        This might differ from the axes order of series.
+        This matches the axes of the first series if its file names could
+        be mapped to the mainfile dimensions.
 
         """
         return str(self.mainfile['Axis Parameter Common']['AxisOrder'][::-1])
@@ -335,7 +340,8 @@ class OifFile:
     def shape(self) -> tuple[int, ...]:
         """Shape of image data according to mainfile.
 
-        This might differ from the shape of series.
+        This matches the shape of the first series if its file names could
+        be mapped to the mainfile dimensions.
 
         """
         size = {
@@ -360,11 +366,22 @@ class OifFile:
 
     @property
     def series(self) -> tuple[TiffSequence, ...]:
-        """Sequence of series of TIFF files with matching names."""
+        """Sequence of series of TIFF files with matching names.
+
+        The first series contains the image data in the axes order and shape
+        of the mainfile if the file names can be mapped to the mainfile
+        dimensions. Missing image planes are zero-filled.
+
+        """
         if self._series is not None:
             return self._series
+        filenames = natural_sorted(self.glob('*.tif'))
+        main = self._main_series(filenames)
+        if main is not None:
+            used = set(main)
+            filenames = [f for f in filenames if f not in used]
         tiffiles: dict[str, list[str]] = {}
-        for filename in self.glob('*.tif'):
+        for filename in filenames:
             key = ''.join(
                 c for c in os.path.split(filename)[-1][:-4] if c.isalpha()
             )
@@ -372,16 +389,76 @@ class OifFile:
                 tiffiles[key].append(filename)
             else:
                 tiffiles[key] = [filename]
-        series = tuple(
-            TiffSequence(
-                natural_sorted(files), imread=self.asarray, pattern='axes'
-            )
-            for files in tiffiles.values()
+
+        def tiff_sequence(files: list[str], /) -> TiffSequence:
+            try:
+                return TiffSequence(files, imread=self.asarray, pattern='axes')
+            except ValueError:
+                # file names without axes, such as reference images
+                return TiffSequence(files, imread=self.asarray)
+
+        series = sorted(
+            (tiff_sequence(files) for files in tiffiles.values()),
+            key=len,
+            reverse=True,
         )
-        if len(series) > 1:
-            series = tuple(sorted(series, key=len, reverse=True))
-        self._series = series
-        return series
+        if main is not None:
+            series.insert(0, main)
+        self._has_main = main is not None
+        self._series = tuple(series)
+        return self._series
+
+    def _main_series(self, filenames: list[str], /) -> TiffSequence | None:
+        """Return series of TIFF files mapped to mainfile axes and shape."""
+        try:
+            axes = self.axes
+            shape = self.shape
+        except (KeyError, ValueError):
+            return None
+        if len(axes) < 3 or axes[-1] != 'X':
+            return None
+        seqaxes = axes[:-2]
+        seqshape = shape[:-2]
+        required = {
+            ax for ax, size in zip(seqaxes, seqshape, strict=True) if size > 1
+        }
+        groups: dict[str, dict[tuple[int, ...], str]] = {}
+        for filename in filenames:
+            # file names end with axis codes and 1-based indices: _C001Z001
+            match = re.search(r'_((?:[A-Z]\d+)+)\.tif$', filename)
+            if match is None:
+                continue
+            index = [0] * len(seqaxes)
+            found = set()
+            for ax, idx in re.findall(r'([A-Z])(\d+)', match.group(1)):
+                i = int(idx) - 1
+                if ax in found:
+                    break
+                found.add(ax)
+                if ax in seqaxes:
+                    j = seqaxes.index(ax)
+                    if not 0 <= i < seqshape[j]:
+                        break
+                    index[j] = i
+                elif i != 0:
+                    break
+            else:
+                if required <= found:
+                    # keep first of files mapped to same index
+                    group = groups.setdefault(filename[: match.start()], {})
+                    group.setdefault(tuple(index), filename)
+        if not groups:
+            return None
+        group = max(groups.values(), key=len)
+
+        def parse(
+            files: list[str], /
+        ) -> tuple[tuple[str, ...], tuple[int, ...], list[Any], list[str]]:
+            return tuple(seqaxes), seqshape, list(group), files
+
+        return TiffSequence(
+            list(group.values()), imread=self.asarray, parse=parse
+        )
 
     def asarray(self, series: int | str = 0, **kwargs: Any) -> NDArray[Any]:
         """Return image data from TIFF file(s) as numpy array.
@@ -395,6 +472,26 @@ class OifFile:
 
         """
         if isinstance(series, int):
+            if series == 0 and self.series and self._has_main:
+                # OifFile.asarray supports decoding into output
+                kwargs.setdefault('out_inplace', True)
+                result = self.series[0].asarray(**kwargs)
+                if result.shape != self.shape:
+                    msg = (
+                        f'image shape {result.shape} does not match '
+                        f'{self.shape}'
+                    )
+                    raise OifFileError(msg)
+                return result
+            if series == 0 and self.series:
+                try:
+                    axes = self.axes
+                except (KeyError, ValueError):
+                    axes = 'YX'
+                if 'Y' not in axes:
+                    # first series contains reference images, not line scans
+                    msg = f'cannot read image data with axes {axes!r}'
+                    raise NotImplementedError(msg)
             return self.series[series].asarray(**kwargs)
         fh = self.open_file(series)
         try:
@@ -496,6 +593,7 @@ class OifFileSystem(FileSystemAbc):
     mainfile: str
     settings: SettingsFile
     _files: list[str]
+    _fileset: set[str]
     _path: str
 
     def __init__(
@@ -516,6 +614,7 @@ class OifFileSystem(FileSystemAbc):
         self._files = [self.mainfile]
         for f in glob(os.path.join(storage, '*')):
             self._files.append(f[pathlen:])
+        self._fileset = {os.path.normpath(f) for f in self._files}
 
     def open_file(self, filename: str, /) -> BinaryIO:
         """Return file object from path name.
@@ -523,10 +622,14 @@ class OifFileSystem(FileSystemAbc):
         The returned file object must be closed by the user.
 
         Parameters:
-            filename: Name of file to open.
+            filename: Name of file in OIF to open.
 
         """
-        return open(os.path.join(self._path, filename), 'rb')
+        normpath = os.path.normpath(filename)
+        if normpath not in self._fileset:
+            msg = f'no such file: {filename}'
+            raise FileNotFoundError(msg)
+        return open(os.path.join(self._path, normpath), 'rb')
 
     def files(self) -> Iterator[str]:
         """Return iterator over unsorted files in OIF."""
@@ -630,22 +733,40 @@ class OibFileSystem(FileSystemAbc):
                 Level of printed status messages (0: none, 1: dots, >1: paths).
 
         """
+        root = os.path.abspath(location or os.curdir)
+
+        def target(*parts: str) -> str:
+            # names from OibInfo.txt must not escape location
+            path = os.path.join(location, *parts)
+            try:
+                inside = (
+                    os.path.commonpath((root, os.path.abspath(path))) == root
+                )
+            except ValueError:
+                inside = False
+            if not inside:
+                msg = f'path {path!r} outside of {root!r}'
+                raise OifFileError(msg)
+            return path
+
+        mainfile = target(self.mainfile)
+        folders = [target(path) for path in self._folders.values()]
+        files = []
+        for f in self._files:
+            folder, name = os.path.split(f)
+            files.append((f, target(self._folders.get(folder, ''), name)))
+
         if location and not os.path.exists(location):
             os.makedirs(location)
-        mainfile = os.path.join(location, self.mainfile)
         if os.path.exists(mainfile):
             raise FileExistsError(mainfile + ' already exists')
-        for folder in self._folders:
-            path = os.path.join(location, self._folders.get(folder, ''))
+        for path in folders:
             if os.path.exists(path):
                 raise FileExistsError(path + ' already exists')
             os.makedirs(path)
         if verbose:
             print('Saving', mainfile, end=' ')  # noqa: T201
-        for f in self._files:
-            folder, name = os.path.split(f)
-            folder = os.path.join(location, self._folders.get(folder, ''))
-            path = os.path.join(folder, name)
+        for f, path in files:
             if verbose == 1:
                 print(end='.')  # noqa: T201
             elif verbose > 1:
@@ -808,6 +929,7 @@ class CompoundFile:
     _minifat: list[Any]
     _difat: list[Any]
     _dirs: list[DirectoryEntry]
+    _lock: threading.Lock
 
     MAXREGSECT = 0xFFFFFFFA
     DIFSECT = 0xFFFFFFFC
@@ -819,6 +941,7 @@ class CompoundFile:
 
     def __init__(self, filename: str | os.PathLike[Any], /) -> None:
         self.filename = filename = os.fspath(filename)
+        self._lock = threading.Lock()
         self._fh = open(filename, 'rb')  # noqa: SIM115
         try:
             self._fromfile()
@@ -964,19 +1087,40 @@ class CompoundFile:
             result = b''.join(self._mini_sec_chain(direntry.sector_start))
         else:
             result = b''.join(self._sec_chain(direntry.sector_start))
-        return result[: direntry.stream_size]
+        result = result[: direntry.stream_size]
+        if len(result) < direntry.stream_size:
+            msg = (
+                f'stream {direntry.name!r} truncated: '
+                f'{len(result)} < {direntry.stream_size} bytes'
+            )
+            raise OifFileError(msg)
+        return result
 
     def _sec_read(self, secid: int, /) -> bytes:
         """Return content of sector from file."""
-        self._fh.seek(self.sec_size + secid * self.sec_size)
-        return self._fh.read(self.sec_size)
+        with self._lock:
+            self._fh.seek(self.sec_size + secid * self.sec_size)
+            return self._fh.read(self.sec_size)
 
     def _sec_chain(self, secid: int, /) -> Generator[bytes]:
         """Return iterator over FAT sector chain content."""
+        for sec in self._chain(secid, self._fat):
+            yield self._sec_read(sec)
+
+    @staticmethod
+    def _chain(secid: int, fat: list[int], /) -> Generator[int]:
+        """Return iterator over sector IDs in chain."""
+        visited = set()
         while secid != CompoundFile.ENDOFCHAIN:
-            if secid <= CompoundFile.MAXREGSECT:
-                yield self._sec_read(secid)
-            secid = self._fat[secid]
+            if secid > CompoundFile.MAXREGSECT or secid >= len(fat):
+                msg = f'invalid sector ID {secid} in chain'
+                raise OifFileError(msg)
+            if secid in visited:
+                msg = f'cyclic sector chain at sector ID {secid}'
+                raise OifFileError(msg)
+            visited.add(secid)
+            yield secid
+            secid = fat[secid]
 
     def _mini_sec_read(self, secid: int, /) -> bytes:
         """Return content of sector from mini stream."""
@@ -985,13 +1129,11 @@ class CompoundFile:
 
     def _mini_sec_chain(self, secid: int, /) -> Generator[bytes]:
         """Return iterator over mini FAT sector chain content."""
-        while secid != CompoundFile.ENDOFCHAIN:
-            if secid <= CompoundFile.MAXREGSECT:
-                yield self._mini_sec_read(secid)
-            secid = self._minifat[secid]
+        for sec in self._chain(secid, self._minifat):
+            yield self._mini_sec_read(sec)
 
     def files(self) -> Iterable[str]:
-        """Return sequence of file names."""
+        """Return iterable over file names."""
         return self._files.keys()
 
     def direntry(self, filename: str, /) -> DirectoryEntry:
@@ -1119,7 +1261,7 @@ class DirectoryEntry:
         ) = struct.unpack('<64sHBBIII16sIQQIQ', header)
 
         if version_major == 3:
-            self.stream_size = struct.unpack('<I', header[-8:-4])[0]
+            self.stream_size = struct.unpack_from('<I', header, -8)[0]
         if self.clsid == b'\000' * 16:
             self.clsid = None
 
@@ -1156,6 +1298,8 @@ def indent(*args: Any) -> str:
 
 def format_dict(
     adict: dict[str, Any],
+    /,
+    *,
     prefix: str = ' ',
     indent: str = ' ',
     bullets: tuple[str, str] = ('', ''),
