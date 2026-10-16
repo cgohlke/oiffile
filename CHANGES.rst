@@ -1,6 +1,21 @@
 Revisions
 ---------
 
+2026.10.15
+
+- Return image data in axes order and shape of mainfile (#2, breaking).
+- Fix image planes lost due to misparsed file names.
+- Fix path traversal in OibFileSystem.saveas_oif.
+- Fix OifFileSystem.open_file reading files outside of dataset.
+- Fix thread-safety of CompoundFile.
+- Raise OifFileError on truncated CompoundFile streams.
+- Fix infinite loop on cyclic sector chains in CompoundFile.
+- Fix OifFile.glob matching.
+- Support line scans.
+- Require tifffile 2026.10.15.
+- Drop support for Python 3.11 and numpy 2.0 (SPEC0).
+- Support Python 3.15.
+
 2026.2.8
 
 - Fix code review issues.
