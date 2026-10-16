@@ -19,7 +19,7 @@ There are two variants of the format:
 
 :Author: `Christoph Gohlke <https://www.cgohlke.com>`_
 :License: BSD-3-Clause
-:Version: 2026.2.8
+:Version: 2026.10.15
 :DOI: `10.5281/zenodo.17905223 <https://doi.org/10.5281/zenodo.17905223>`_
 
 Quickstart
@@ -30,11 +30,8 @@ Install the oiffile package and all dependencies from the
 
     python -m pip install -U "oiffile[all]"
 
-View image and metadata stored in an OIF or OIB file::
-
-    python -m oiffile file.oif
-
-See `Examples`_ for using the programming interface.
+See `Examples`_ and `Documentation <https://www.cgohlke.com/docs/oiffile/>`_
+for using the programming interface.
 
 Source code and support are available on
 `GitHub <https://github.com/cgohlke/oiffile>`_.
@@ -45,37 +42,33 @@ Requirements
 This revision was tested with the following requirements and dependencies
 (other versions may work):
 
-- `CPython <https://www.python.org>`_ 3.11.9, 3.12.10, 3.13.12, 3.14.3 64-bit
-- `NumPy <https://pypi.org/project/numpy>`_ 2.4.2
-- `Tifffile <https://pypi.org/project/tifffile/>`_ 2026.1.28
+- `CPython <https://www.python.org>`_ 3.12.10, 3.13.16, 3.14.8, 3.15.0 64-bit
+- `Numpy <https://pypi.org/project/numpy>`_ 2.5.4
+- `Tifffile <https://pypi.org/project/tifffile/>`_ 2026.10.15
 
 Revisions
 ---------
+
+2026.10.15
+
+- Return image data in axes order and shape of mainfile (#2, breaking).
+- Fix image planes lost due to misparsed file names.
+- Fix path traversal in OibFileSystem.saveas_oif.
+- Fix OifFileSystem.open_file reading files outside of dataset.
+- Fix thread-safety of CompoundFile.
+- Raise OifFileError on truncated CompoundFile streams.
+- Fix infinite loop on cyclic sector chains in CompoundFile.
+- Fix OifFile.glob matching.
+- Support line scans.
+- Require tifffile 2026.10.15.
+- Drop support for Python 3.11 and numpy 2.0 (SPEC0).
+- Support Python 3.15.
 
 2026.2.8
 
 - Fix code review issues.
 
 2026.1.8
-
-- Improve code quality.
-
-2025.12.12
-
-- Derive OifFileError from ValueError.
-- Drop support for Python 3.10.
-
-2025.5.10
-
-- Remove doctest command line option.
-- Support Python 3.14.
-
-2025.1.1
-
-- Improve type hints.
-- Drop support for Python 3.9, support Python 3.13.
-
-2024.5.24
 
 - …
 
@@ -90,6 +83,12 @@ Tested only with files produced on Olympus FV1000 hardware.
 
 Examples
 --------
+
+Import functions and classes used in these examples:
+
+.. code-block:: python
+
+    >>> from oiffile import CompoundFile, OifFile, SettingsFile, imread, oib2oif
 
 Read the image from an OIB file as numpy array:
 
@@ -160,3 +159,7 @@ Read OLE compound file and access the 'OibInfo.txt' settings file:
     >>> info = SettingsFile(info, 'OibInfo.txt')
     >>> info['OibSaveInfo']['Version']
     '2.0.0.0'
+
+Preview image and metadata stored in an OIF or OIB file from the console::
+
+    python -m oiffile test.oif
